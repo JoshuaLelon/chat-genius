@@ -40,3 +40,4 @@ export function WorkspaceList({ workspaces, currentUser, activeWorkspaceId, onWo
     </div>
   )
 }
+

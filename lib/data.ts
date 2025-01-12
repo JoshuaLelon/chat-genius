@@ -123,3 +123,4 @@ interface DirectMessage {
   participants: User[];
   messages: Message[];
 }
+

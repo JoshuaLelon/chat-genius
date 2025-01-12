@@ -40,3 +40,4 @@ export function EmojiPicker({ onEmojiSelect }: EmojiPickerProps) {
     </Popover>
   )
 }
+

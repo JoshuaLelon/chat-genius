@@ -53,3 +53,4 @@ export function ChatArea({ channelId, dmId }: ChatAreaProps) {
     </div>
   )
 }
+

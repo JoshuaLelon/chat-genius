@@ -69,3 +69,4 @@ export function ChatMessage({ message, currentUser, channelId, dmId }: ChatMessa
     </div>
   )
 }
+

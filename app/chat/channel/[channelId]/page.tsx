@@ -46,3 +46,4 @@ export default function ChannelPage({ params }: { params: { channelId: string } 
     </div>
   )
 }
+

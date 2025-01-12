@@ -85,3 +85,4 @@ export function UserStatus({ user, onLogout }: UserStatusProps) {
     </div>
   )
 }
+

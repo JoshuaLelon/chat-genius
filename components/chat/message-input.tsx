@@ -51,3 +51,4 @@ export function MessageInput({ channelId, dmId }: MessageInputProps) {
     </form>
   )
 }
+

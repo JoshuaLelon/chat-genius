@@ -34,3 +34,4 @@ export function ChannelList({ channels, activeChannelId }: ChannelListProps) {
     </ScrollArea>
   )
 }
+
