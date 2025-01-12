@@ -4,54 +4,101 @@ import { ChatArea } from "@/components/chat/chat-area"
 import { useChatContext } from "@/contexts/ChatContext"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
+import { Skeleton } from "@/components/ui/skeleton"
 
 export default function DMPage({ params }: { params: { userId: string } }) {
   const { workspace, currentUser } = useChatContext()
   const router = useRouter()
-  const [otherUser, setOtherUser] = useState(workspace.users.find(u => u.id === params.userId));
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [otherUser, setOtherUser] = useState(workspace.users.find(u => u.id === params.userId))
 
   useEffect(() => {
     const findUser = () => {
-      const user = workspace.users.find(u => u.id === params.userId);
-      setOtherUser(user);
-    }
-
-    findUser();
-
-    const intervalId = setInterval(findUser, 5000); // Check every 5 seconds
-
-    return () => clearInterval(intervalId);
-  }, [workspace, params.userId]);
-
-
-  useEffect(() => {
-    if (!otherUser) {
-      // If the user doesn't exist in the current workspace, redirect to the first channel
-      const firstChannel = workspace.channels[0]
-      if (firstChannel) {
-        router.push(`/chat/channel/${firstChannel.id}`)
-      } else {
-        // If there are no channels, redirect to the main chat page
-        router.push('/chat')
+      setIsLoading(true)
+      try {
+        const user = workspace.users.find(u => u.id === params.userId)
+        setOtherUser(user)
+        if (!user) {
+          setError('User not found in this workspace')
+          // Redirect after a short delay to show the error message
+          const timer = setTimeout(() => {
+            const firstChannel = workspace.channels[0]
+            if (firstChannel) {
+              router.push(`/chat/channel/${firstChannel.id}`)
+            } else {
+              router.push('/chat')
+            }
+          }, 2000)
+          return () => clearTimeout(timer)
+        }
+      } catch (error) {
+        console.error('Error finding user:', error)
+        setError('Failed to load user information')
+      } finally {
+        setIsLoading(false)
       }
     }
-  }, [workspace, params.userId, router, otherUser])
 
-  console.log('DMPage Rendered:', {
-    userId: params.userId,
-    workspace: { id: workspace.id, name: workspace.name },
-    currentUser: currentUser.username,
-    otherUser: otherUser ? otherUser.username : null
-  });
+    findUser()
+  }, [workspace, params.userId, router])
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="border-b px-4 py-2">
+          <Skeleton className="h-8 w-[200px]" />
+        </div>
+        <div className="flex-1 p-4">
+          <div className="space-y-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex gap-3">
+                <Skeleton className="h-8 w-8 rounded-full" />
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-[200px]" />
+                  <Skeleton className="h-4 w-[300px]" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="text-center">
+          <p className="text-muted-foreground mb-2">{error}</p>
+          <p className="text-sm text-muted-foreground">Redirecting...</p>
+        </div>
+      </div>
+    )
+  }
 
   if (!otherUser) {
-    return <div>Loading...</div>
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="text-center">
+          <p className="text-muted-foreground mb-2">User not found</p>
+          <p className="text-sm text-muted-foreground">Redirecting to main chat...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="flex flex-col h-full">
       <div className="border-b px-4 py-2">
-        <h1 className="text-xl font-semibold">{otherUser.username}</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-semibold">{otherUser.username}</h1>
+          <span className={`h-2 w-2 rounded-full ${
+            otherUser.status === 'online' ? 'bg-green-500' :
+            otherUser.status === 'busy' ? 'bg-yellow-500' :
+            'bg-gray-500'
+          }`} />
+        </div>
       </div>
       <ChatArea channelId={null} dmId={params.userId} />
     </div>

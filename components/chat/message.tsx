@@ -6,6 +6,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Message, User } from "@/types"
 import { formatDate } from "@/utils/dateFormat"
+import { toast } from "sonner"
+import { useState } from "react"
+import { addReaction, removeReaction, deleteMessage } from "@/lib/supabase"
 
 interface ChatMessageProps {
   message: Message
@@ -15,26 +18,47 @@ interface ChatMessageProps {
 }
 
 export function ChatMessage({ message, currentUser, channelId, dmId }: ChatMessageProps) {
-  const { updateMessage } = useChatContext()
+  const [isUpdating, setIsUpdating] = useState(false)
 
-  const handleReaction = (emoji: string) => {
-    const updatedMessage = { ...message }
-    const existingReaction = updatedMessage.reactions.find(r => r.emoji === emoji)
-    
-    if (existingReaction) {
-      if (existingReaction.users.includes(currentUser.id)) {
-        existingReaction.users = existingReaction.users.filter(id => id !== currentUser.id)
-        if (existingReaction.users.length === 0) {
-          updatedMessage.reactions = updatedMessage.reactions.filter(r => r.emoji !== emoji)
+  const handleReaction = async (emoji: string) => {
+    if (isUpdating) return
+
+    setIsUpdating(true)
+    try {
+      const existingReaction = message.reactions.find(r => r.emoji === emoji)
+      
+      if (existingReaction) {
+        if (existingReaction.users.includes(currentUser.id)) {
+          // Remove reaction
+          await removeReaction(message.id, emoji)
+        } else {
+          // Add user to reaction
+          await addReaction(message.id, emoji)
         }
       } else {
-        existingReaction.users.push(currentUser.id)
+        // Add new reaction
+        await addReaction(message.id, emoji)
       }
-    } else {
-      updatedMessage.reactions.push({ emoji, users: [currentUser.id] })
+    } catch (error) {
+      console.error('Error updating reaction:', error)
+      toast.error('Failed to update reaction. Please try again.')
+    } finally {
+      setIsUpdating(false)
     }
+  }
 
-    updateMessage(channelId, dmId, message.id, updatedMessage)
+  const handleDelete = async () => {
+    if (isUpdating) return
+
+    setIsUpdating(true)
+    try {
+      await deleteMessage(message.id)
+    } catch (error) {
+      console.error('Error deleting message:', error)
+      toast.error('Failed to delete message. Please try again.')
+    } finally {
+      setIsUpdating(false)
+    }
   }
 
   return (
@@ -43,7 +67,7 @@ export function ChatMessage({ message, currentUser, channelId, dmId }: ChatMessa
         <AvatarImage src={message.user.avatar} alt={message.user.username} />
         <AvatarFallback>{message.user.username[0].toUpperCase()}</AvatarFallback>
       </Avatar>
-      <div className="grid gap-1">
+      <div className="grid gap-1 flex-1">
         <div className="flex items-center gap-2">
           <span className="font-semibold">{message.user.username}</span>
           <span className="text-xs text-muted-foreground">
@@ -58,12 +82,24 @@ export function ChatMessage({ message, currentUser, channelId, dmId }: ChatMessa
               variant="ghost"
               size="sm"
               className="h-6 gap-1 rounded-full px-2 text-xs"
-              onClick={() => handleReaction(reaction.emoji)}
+              onClick={() => void handleReaction(reaction.emoji)}
+              disabled={isUpdating}
             >
               {reaction.emoji} {reaction.users.length}
             </Button>
           ))}
-          <EmojiPicker onEmojiSelect={handleReaction} />
+          <EmojiPicker onEmojiSelect={(emoji) => void handleReaction(emoji)} />
+          {message.user.id === currentUser.id && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={() => void handleDelete()}
+              disabled={isUpdating}
+            >
+              Delete
+            </Button>
+          )}
         </div>
       </div>
     </div>
