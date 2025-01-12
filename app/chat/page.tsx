@@ -1,3 +1,5 @@
+"use client"
+
 import { useChatContext } from "@/contexts/ChatContext"
 
 export default function ChatPage() {
