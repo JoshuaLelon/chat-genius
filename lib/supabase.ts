@@ -34,7 +34,7 @@ export async function getWorkspace(workspaceId: string): Promise<Workspace> {
   console.log("[Supabase] First fetching member IDs...");
   const membersQuery = await supabase
     .from('workspace_members')
-    .select('user_id')
+    .select('user_id, role')
     .eq('workspace_id', workspaceId);
   
   console.log("[Supabase] Member IDs query result:", membersQuery);
@@ -252,64 +252,50 @@ export async function createMessage({ content, channel_id, dm_id, user_id }: {
       dm_id,
       user_id
     })
-    .select('*, user:profiles(*)')
+    .select(`
+      *,
+      sender:profiles!messages_user_id_fkey(
+        id,
+        email,
+        avatar_url,
+        status
+      )
+    `)
+    .single()
   
   console.log("[Supabase] Create message result:", { data, error });
-  return { data, error };
-}
-
-export async function deleteMessage(messageId: string) {
-  const { error } = await supabase
-    .from('messages')
-    .delete()
-    .eq('id', messageId)
-
-  if (error) throw error
-}
-
-// Reaction functions
-export async function addReaction(messageId: string, emoji: string, userId: string) {
-  const { data, error } = await supabase
-    .from('reactions')
-    .insert({
-      message_id: messageId,
-      emoji,
-      user_id: userId
-    })
-    .select('*, user:profiles(*)')
-    .single()
-
-  if (error) throw error
-  return data
-}
-
-export async function removeReaction(messageId: string, emoji: string, userId: string) {
-  const { error } = await supabase
-    .from('reactions')
-    .delete()
-    .match({
-      message_id: messageId,
-      emoji,
-      user_id: userId
-    })
-
-  if (error) throw error
+  if (error) {
+    console.error("[Supabase] Error creating message:", error);
+    throw error;
+  }
+  console.log("[Supabase] Successfully created message");
+  return data;
 }
 
 // User functions
 export async function updateUserStatus(userId: string, status: 'online' | 'offline' | 'busy') {
-  const { error } = await supabase
+  console.log("[Supabase] Updating user status:", { userId, status });
+  
+  const { data, error } = await supabase
     .from('profiles')
     .update({ status })
     .eq('id', userId)
+    .select()
+    .single();
 
-  if (error) throw error
+  if (error) {
+    console.error("[Supabase] Error updating user status:", error);
+    throw error;
+  }
+
+  console.log("[Supabase] Successfully updated user status:", data);
+  return data;
 }
 
 // Real-time subscriptions
 export type MessageSubscriptionCallback = (payload: {
-  new: Message & { user: User }
-  old: Message & { user: User } | null
+  new: Message & { sender: User }
+  old: Message & { sender: User } | null
   eventType: 'INSERT' | 'UPDATE' | 'DELETE'
 }) => void
 
@@ -317,6 +303,7 @@ export function subscribeToChannelMessages(
   channelId: string,
   callback: MessageSubscriptionCallback
 ) {
+  console.log("[Supabase] Subscribing to channel messages:", channelId);
   return supabase
     .channel(`messages:${channelId}`)
     .on(
@@ -328,27 +315,31 @@ export function subscribeToChannelMessages(
         filter: `channel_id=eq.${channelId}`
       },
       async (payload: any) => {
+        console.log("[Supabase] Received message change:", payload);
         // Fetch user data for the message
         if (payload.new) {
+          console.log("[Supabase] Fetching sender data for new message");
           const { data: userData } = await supabase
             .from('profiles')
             .select('*')
             .eq('id', payload.new.user_id)
             .single()
           
-          payload.new.user = userData
+          payload.new.sender = userData
         }
         
         if (payload.old) {
+          console.log("[Supabase] Fetching sender data for old message");
           const { data: userData } = await supabase
             .from('profiles')
             .select('*')
             .eq('id', payload.old.user_id)
             .single()
           
-          payload.old.user = userData
+          payload.old.sender = userData
         }
 
+        console.log("[Supabase] Invoking message subscription callback");
         callback({
           new: payload.new,
           old: payload.old,
@@ -360,63 +351,8 @@ export function subscribeToChannelMessages(
 }
 
 export function unsubscribeFromChannelMessages(channelId: string) {
+  console.log("[Supabase] Unsubscribing from channel messages:", channelId);
   return supabase.channel(`messages:${channelId}`).unsubscribe()
-}
-
-export type ReactionSubscriptionCallback = (payload: {
-  new: Reaction & { user: User }
-  old: Reaction & { user: User } | null
-  eventType: 'INSERT' | 'UPDATE' | 'DELETE'
-}) => void
-
-export function subscribeToMessageReactions(
-  messageId: string,
-  callback: ReactionSubscriptionCallback
-) {
-  return supabase
-    .channel(`reactions:${messageId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'reactions',
-        filter: `message_id=eq.${messageId}`
-      },
-      async (payload: any) => {
-        // Fetch user data for the reaction
-        if (payload.new) {
-          const { data: userData } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', payload.new.user_id)
-            .single()
-          
-          payload.new.user = userData
-        }
-        
-        if (payload.old) {
-          const { data: userData } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', payload.old.user_id)
-            .single()
-          
-          payload.old.user = userData
-        }
-
-        callback({
-          new: payload.new,
-          old: payload.old,
-          eventType: payload.eventType
-        })
-      }
-    )
-    .subscribe()
-}
-
-export function unsubscribeFromMessageReactions(messageId: string) {
-  return supabase.channel(`reactions:${messageId}`).unsubscribe()
 }
 
 export type StatusSubscriptionCallback = (payload: {
@@ -429,6 +365,7 @@ export function subscribeToUserStatus(
   userId: string,
   callback: StatusSubscriptionCallback
 ) {
+  console.log("[Supabase] Subscribing to user status:", userId);
   return supabase
     .channel(`presence:${userId}`)
     .on(
@@ -440,6 +377,7 @@ export function subscribeToUserStatus(
         filter: `id=eq.${userId}`
       },
       (payload: any) => {
+        console.log("[Supabase] Received status change:", payload);
         callback({
           new: payload.new,
           old: payload.old,
@@ -451,5 +389,117 @@ export function subscribeToUserStatus(
 }
 
 export function unsubscribeFromUserStatus(userId: string) {
+  console.log("[Supabase] Unsubscribing from user status:", userId);
   return supabase.channel(`presence:${userId}`).unsubscribe()
+}
+
+// Reaction functions
+export async function addReaction(messageId: string, emoji: string, userId: string) {
+  console.log("[Supabase] Adding reaction:", { messageId, emoji, userId });
+  
+  const { data, error } = await supabase
+    .from('reactions')
+    .insert({
+      message_id: messageId,
+      emoji,
+      user_id: userId
+    })
+    .select(`
+      *,
+      reactor:profiles!reactions_user_id_fkey(
+        id,
+        email,
+        avatar_url,
+        status
+      )
+    `)
+    .single()
+
+  if (error) {
+    console.error("[Supabase] Error adding reaction:", error);
+    throw error;
+  }
+  console.log("[Supabase] Successfully added reaction:", data);
+  return data;
+}
+
+export async function removeReaction(messageId: string, emoji: string, userId: string) {
+  console.log("[Supabase] Removing reaction:", { messageId, emoji, userId });
+  
+  const { error } = await supabase
+    .from('reactions')
+    .delete()
+    .match({
+      message_id: messageId,
+      emoji,
+      user_id: userId
+    })
+
+  if (error) {
+    console.error("[Supabase] Error removing reaction:", error);
+    throw error;
+  }
+  console.log("[Supabase] Successfully removed reaction");
+}
+
+export type ReactionSubscriptionCallback = (payload: {
+  new: Reaction & { reactor: User }
+  old: Reaction & { reactor: User } | null
+  eventType: 'INSERT' | 'UPDATE' | 'DELETE'
+}) => void
+
+export function subscribeToMessageReactions(
+  messageId: string,
+  callback: ReactionSubscriptionCallback
+) {
+  console.log("[Supabase] Subscribing to message reactions:", messageId);
+  return supabase
+    .channel(`reactions:${messageId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'reactions',
+        filter: `message_id=eq.${messageId}`
+      },
+      async (payload: any) => {
+        console.log("[Supabase] Received reaction change:", payload);
+        // Fetch user data for the reaction
+        if (payload.new) {
+          console.log("[Supabase] Fetching reactor data for new reaction");
+          const { data: userData } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', payload.new.user_id)
+            .single()
+          
+          payload.new.reactor = userData
+        }
+        
+        if (payload.old) {
+          console.log("[Supabase] Fetching reactor data for old reaction");
+          const { data: userData } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', payload.old.user_id)
+            .single()
+          
+          payload.old.reactor = userData
+        }
+
+        console.log("[Supabase] Invoking reaction subscription callback");
+        callback({
+          new: payload.new,
+          old: payload.old,
+          eventType: payload.eventType
+        })
+      }
+    )
+    .subscribe()
+}
+
+export function unsubscribeFromMessageReactions(messageId: string) {
+  console.log("[Supabase] Unsubscribing from message reactions:", messageId);
+  return supabase.channel(`reactions:${messageId}`).unsubscribe()
 } 

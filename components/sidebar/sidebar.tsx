@@ -1,17 +1,17 @@
-import { ChannelList } from "@/components/sidebar/channel-list"
-import { UserStatus } from "@/components/sidebar/user-status"
-import { WorkspaceList } from "@/components/sidebar/workspace-list"
+import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Workspace, User } from "@/types"
+import { Workspace } from "@/types"
 import { Circle } from 'lucide-react'
 import Link from "next/link"
-import { workspaces } from "@/lib/data"
+import { ChannelList } from "./channel-list"
+import { UserStatus } from "./user-status"
+import { WorkspaceList } from "./workspace-list"
 
 interface SidebarProps {
   activeWorkspace: Workspace
   activeChannelId?: string
-  activeUserId?: string // Updated prop name
-  currentUser: User
+  activeUserId?: string
+  currentUser: any
   onLogout: () => void
   onWorkspaceSelect: (workspaceId: string) => void
 }
@@ -21,19 +21,22 @@ export function Sidebar({ activeWorkspace, activeChannelId, activeUserId, curren
     dm.participants.some(p => p.id === currentUser.id)
   )
 
-  console.log('Sidebar State:', {
-    activeWorkspace: { id: activeWorkspace.id, name: activeWorkspace.name },
-    currentUser: currentUser.username,
+  console.log('[Sidebar] Rendering with:', {
+    workspaceId: activeWorkspace.id,
+    workspaceName: activeWorkspace.name,
+    channelCount: activeWorkspace.channels.length,
+    channels: activeWorkspace.channels.map(c => ({ id: c.id, name: c.name })),
+    currentUser: currentUser?.email,
     activeChannelId,
-    activeUserId // Updated prop name
+    activeUserId
   });
 
-  console.log('Available DM Links:', activeWorkspace.users
+  console.log('[Sidebar] Available DM Links:', activeWorkspace.users
     .filter(user => user.id !== currentUser.id)
-    .map(user => `/chat/dm/${user.id}`));
+    .map(user => ({ userId: user.id, email: user.email })));
 
-  console.log('Available Channel Links:', activeWorkspace.channels
-    .map(channel => `/chat/channel/${channel.id}`));
+  console.log('[Sidebar] Available Channel Links:', activeWorkspace.channels
+    .map(channel => ({ id: channel.id, name: channel.name })));
 
   return (
     <div className="flex h-full flex-col border-r bg-muted/50">
@@ -41,7 +44,6 @@ export function Sidebar({ activeWorkspace, activeChannelId, activeUserId, curren
       <ScrollArea className="flex-1">
         <div className="space-y-4 p-4">
           <WorkspaceList 
-            workspaces={workspaces} 
             currentUser={currentUser} 
             activeWorkspaceId={activeWorkspace.id}
             onWorkspaceSelect={onWorkspaceSelect}
@@ -71,9 +73,9 @@ export function Sidebar({ activeWorkspace, activeChannelId, activeUserId, curren
                     key={user.id}
                     href={`/chat/dm/${user.id}`}
                     className={`flex items-center rounded-md px-2 py-1 hover:bg-muted ${
-                      user.id === activeUserId // Updated prop name
-                        ? "bg-primary text-primary-foreground font-bold hover:bg-primary/90 hover:text-primary-foreground" 
-                        : "hover:bg-accent hover:text-accent-foreground"
+                      user.id === activeUserId 
+                        ? 'bg-primary text-primary-foreground font-bold hover:bg-primary/90 hover:text-primary-foreground'
+                        : 'hover:bg-accent hover:text-accent-foreground'
                     }`}
                   >
                     <Circle className={`mr-2 h-2 w-2 ${
@@ -81,7 +83,7 @@ export function Sidebar({ activeWorkspace, activeChannelId, activeUserId, curren
                       user.status === 'busy' ? 'fill-yellow-500 text-yellow-500' :
                       'fill-gray-500 text-gray-500'
                     }`} />
-                    <span>{user.username}</span>
+                    {user.email.split('@')[0]}
                   </Link>
                 ))
               }

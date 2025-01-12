@@ -14,14 +14,26 @@ export function MessageInput({ onSendMessage }: MessageInputProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!content.trim() || isLoading) return
+    if (!content.trim() || isLoading) {
+      console.log("[MessageInput] Ignoring submit:", {
+        content: content.trim(),
+        isLoading
+      });
+      return
+    }
+
+    console.log("[MessageInput] Submitting message:", {
+      content,
+      isLoading
+    });
 
     try {
       setIsLoading(true)
       await onSendMessage(content)
+      console.log("[MessageInput] Message sent successfully");
       setContent("")
     } catch (error) {
-      console.error("Error sending message:", error)
+      console.error("[MessageInput] Error sending message:", error)
     } finally {
       setIsLoading(false)
     }
@@ -29,6 +41,7 @@ export function MessageInput({ onSendMessage }: MessageInputProps) {
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
+      console.log("[MessageInput] Enter key pressed (no shift)");
       e.preventDefault()
       handleSubmit(e)
     }

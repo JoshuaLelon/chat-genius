@@ -1,44 +1,56 @@
 "use client"
 
-import { createContext, useContext, useState } from "react"
-import { User, Workspace } from "@/types"
+import { createContext, useContext, useState, useEffect, useCallback } from "react"
+import { Workspace } from "@/types"
 import { updateUserStatus as updateUserStatusInDb } from "@/lib/supabase"
 
+type UserStatus = 'online' | 'offline' | 'busy'
+
 interface ChatContextType {
-  workspace: Workspace
-  currentUser: User
-  updateUserStatus: (newStatus: 'online' | 'offline' | 'busy') => Promise<void>
+  workspace: Workspace | null
+  updateUserStatus: (status: UserStatus) => Promise<void>
+  onWorkspaceSelect: (workspaceId: string) => Promise<void>
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined)
 
 interface ChatProviderProps {
   children: React.ReactNode
-  initialWorkspace: Workspace
-  currentUser: User
+  initialWorkspace: Workspace | null
+  onWorkspaceSelect: (workspaceId: string) => Promise<void>
 }
 
-export function ChatProvider({ children, initialWorkspace, currentUser }: ChatProviderProps) {
-  const [workspace, setWorkspace] = useState(initialWorkspace)
-
-  const updateUserStatus = async (newStatus: 'online' | 'offline' | 'busy') => {
-    try {
-      await updateUserStatusInDb(currentUser.id, newStatus)
-      
-      // Update workspace state
-      setWorkspace(prev => ({
-        ...prev,
-        users: prev.users.map(user => 
-          user.id === currentUser.id ? { ...user, status: newStatus } : user
-        )
-      }))
-    } catch (error) {
-      console.error('Error updating user status:', error)
+export function ChatProvider({ children, initialWorkspace, onWorkspaceSelect }: ChatProviderProps) {
+  const [workspace, setWorkspace] = useState<Workspace | null>(initialWorkspace)
+  
+  useEffect(() => {
+    console.log("[ChatContext] Workspace changed:", {
+      from: workspace?.name,
+      to: initialWorkspace?.name,
+      fromId: workspace?.id,
+      toId: initialWorkspace?.id
+    })
+    
+    if (initialWorkspace?.id) {
+      setWorkspace(initialWorkspace)
+      updateUserStatusInDb(initialWorkspace.id, 'online' as UserStatus)
+        .catch(err => console.error('[ChatContext] Error updating user status:', err))
     }
-  }
+  }, [initialWorkspace?.id])
+
+  const updateUserStatus = useCallback(async (status: UserStatus) => {
+    if (!workspace?.id) return
+    
+    try {
+      await updateUserStatusInDb(workspace.id, status)
+      console.log('[ChatContext] User status updated:', { workspaceId: workspace.id, status })
+    } catch (error) {
+      console.error('[ChatContext] Error updating user status:', error)
+    }
+  }, [workspace?.id])
 
   return (
-    <ChatContext.Provider value={{ workspace, currentUser, updateUserStatus }}>
+    <ChatContext.Provider value={{ workspace, updateUserStatus, onWorkspaceSelect }}>
       {children}
     </ChatContext.Provider>
   )

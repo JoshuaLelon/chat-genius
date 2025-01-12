@@ -3,6 +3,7 @@ export interface User {
   username?: string
   email: string
   avatar?: string
+  avatar_url?: string
   status: 'online' | 'offline' | 'busy'
 }
 
@@ -10,7 +11,7 @@ export interface Message {
   id: string
   content: string
   user_id: string
-  user?: User
+  sender?: User
   channel_id?: string
   dm_id?: string
   created_at: string
@@ -22,6 +23,7 @@ export interface Reaction {
   emoji: string
   user_id: string
   message_id: string
+  reactor?: User
 }
 
 export interface Channel {

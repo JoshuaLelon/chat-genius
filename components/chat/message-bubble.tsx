@@ -2,123 +2,119 @@
 
 import { Message, User } from "@/types"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
-import { Pencil, Trash2 } from "lucide-react"
-import { useState } from "react"
 import { formatDate } from "@/utils/dateFormat"
+import { Button } from "@/components/ui/button"
+import { addReaction, removeReaction } from "@/lib/supabase"
+import { useState } from "react"
 
 interface MessageBubbleProps {
   message: Message
   currentUser: User
-  onUpdate: (messageId: string, content: string) => Promise<void>
-  onDelete: (messageId: string) => Promise<void>
 }
 
-export function MessageBubble({ message, currentUser, onUpdate, onDelete }: MessageBubbleProps) {
-  const [isEditing, setIsEditing] = useState(false)
-  const [editContent, setEditContent] = useState(message.content)
-  const [isLoading, setIsLoading] = useState(false)
+export function MessageBubble({ message, currentUser }: MessageBubbleProps) {
+  const [isAddingReaction, setIsAddingReaction] = useState(false)
 
-  const isOwner = message.user_id === currentUser.id
-  const user = message.user || { username: 'Unknown User', avatar_url: undefined }
+  console.log("[MessageBubble] Rendering message:", {
+    messageId: message.id,
+    content: message.content,
+    userId: message.user_id,
+    sender: message.sender,
+    timestamp: message.created_at,
+    reactionCount: message.reactions.length
+  });
 
-  const handleUpdate = async () => {
-    if (!editContent.trim() || isLoading) return
+  // Get the sender's display name from the email (before the @)
+  const displayName = message.sender?.email?.split('@')[0] || 'Unknown User'
+  const initial = displayName[0].toUpperCase()
+
+  // Group reactions by emoji
+  const reactionGroups = message.reactions.reduce((groups, reaction) => {
+    const emoji = reaction.emoji
+    if (!groups[emoji]) {
+      groups[emoji] = []
+    }
+    groups[emoji].push(reaction)
+    return groups
+  }, {} as Record<string, typeof message.reactions>)
+
+  const handleAddReaction = async (emoji: string) => {
+    console.log("[MessageBubble] Adding reaction:", {
+      messageId: message.id,
+      emoji,
+      userId: currentUser.id
+    });
 
     try {
-      setIsLoading(true)
-      await onUpdate(message.id, editContent)
-      setIsEditing(false)
+      setIsAddingReaction(true)
+      await addReaction(message.id, emoji, currentUser.id)
+      console.log("[MessageBubble] Reaction added successfully");
     } catch (error) {
-      console.error("Error updating message:", error)
+      console.error("[MessageBubble] Error adding reaction:", error)
     } finally {
-      setIsLoading(false)
+      setIsAddingReaction(false)
     }
   }
 
-  const handleDelete = async () => {
-    if (isLoading) return
+  const handleRemoveReaction = async (emoji: string) => {
+    console.log("[MessageBubble] Removing reaction:", {
+      messageId: message.id,
+      emoji,
+      userId: currentUser.id
+    });
 
     try {
-      setIsLoading(true)
-      await onDelete(message.id)
+      setIsAddingReaction(true)
+      await removeReaction(message.id, emoji, currentUser.id)
+      console.log("[MessageBubble] Reaction removed successfully");
     } catch (error) {
-      console.error("Error deleting message:", error)
+      console.error("[MessageBubble] Error removing reaction:", error)
     } finally {
-      setIsLoading(false)
+      setIsAddingReaction(false)
     }
   }
 
   return (
     <div className="flex items-start gap-4">
       <Avatar>
-        <AvatarImage src={user.avatar_url} />
-        <AvatarFallback>{user.username[0].toUpperCase()}</AvatarFallback>
+        <AvatarImage src={message.sender?.avatar_url} />
+        <AvatarFallback>{initial}</AvatarFallback>
       </Avatar>
       <div className="flex-1 space-y-1">
         <div className="flex items-center gap-2">
-          <span className="font-semibold">{user.username}</span>
+          <span className="font-semibold">{displayName}</span>
           <span className="text-xs text-muted-foreground">
             {formatDate(message.created_at)}
           </span>
         </div>
-        {isEditing ? (
-          <div className="space-y-2">
-            <Textarea
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              className="min-h-[40px]"
-              disabled={isLoading}
-            />
-            <div className="flex gap-2">
+        <p className="whitespace-pre-wrap">{message.content}</p>
+        <div className="flex flex-wrap gap-2 mt-2">
+          {Object.entries(reactionGroups).map(([emoji, reactions]) => {
+            const hasReacted = reactions.some(r => r.user_id === currentUser.id)
+            return (
               <Button
-                size="sm"
-                onClick={handleUpdate}
-                disabled={!editContent.trim() || isLoading}
-              >
-                Save
-              </Button>
-              <Button
-                size="sm"
+                key={emoji}
                 variant="outline"
-                onClick={() => {
-                  setIsEditing(false)
-                  setEditContent(message.content)
-                }}
-                disabled={isLoading}
+                size="sm"
+                className="gap-1 px-2 py-0 h-6"
+                onClick={() => hasReacted ? handleRemoveReaction(emoji) : handleAddReaction(emoji)}
+                disabled={isAddingReaction}
               >
-                Cancel
+                <span>{emoji}</span>
+                <span className="text-xs">{reactions.length}</span>
               </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="group relative">
-            <p className="whitespace-pre-wrap">{message.content}</p>
-            {isOwner && (
-              <div className="absolute -right-2 top-0 hidden gap-1 group-hover:flex">
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8"
-                  onClick={() => setIsEditing(true)}
-                  disabled={isLoading}
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8"
-                  onClick={handleDelete}
-                  disabled={isLoading}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
+            )
+          })}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="px-2 py-0 h-6"
+            onClick={() => handleAddReaction('👍')}
+            disabled={isAddingReaction}
+          >
+            +
+          </Button>
+        </div>
       </div>
     </div>
   )

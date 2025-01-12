@@ -23,6 +23,7 @@ interface UserStatusProps {
 export function UserStatus({ user, onLogout }: UserStatusProps) {
   const { updateUserStatus, workspace } = useChatContext()
   const [status, setStatus] = useState(user.status)
+  const [isUpdating, setIsUpdating] = useState(false)
   const router = useRouter()
 
   console.log("[UserStatus] Rendering with user:", user)
@@ -44,9 +45,22 @@ export function UserStatus({ user, onLogout }: UserStatusProps) {
   console.log("[UserStatus] Display name:", displayName)
   console.log("[UserStatus] Display initial:", displayInitial)
 
-  const handleStatusChange = (newStatus: 'online' | 'offline' | 'busy') => {
-    setStatus(newStatus)
-    updateUserStatus(user.id, newStatus)
+  const handleStatusChange = async (newStatus: 'online' | 'offline' | 'busy') => {
+    if (isUpdating) return // Prevent multiple simultaneous updates
+    
+    try {
+      setIsUpdating(true)
+      console.log("[UserStatus] Updating status to:", newStatus)
+      await updateUserStatus(newStatus)
+      setStatus(newStatus)
+      console.log("[UserStatus] Status updated successfully")
+    } catch (error) {
+      console.error('[UserStatus] Error updating status:', error)
+      // Revert status on error
+      setStatus(status)
+    } finally {
+      setIsUpdating(false)
+    }
   }
 
   const handleLogout = () => {
@@ -64,25 +78,39 @@ export function UserStatus({ user, onLogout }: UserStatusProps) {
         <div className="font-medium">{displayName}</div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="link" className="h-auto p-0 text-xs text-muted-foreground">
+            <Button 
+              variant="link" 
+              className="h-auto p-0 text-xs text-muted-foreground"
+              disabled={isUpdating}
+            >
               <Circle className={`mr-1 h-2 w-2 ${
                 status === 'online' ? 'fill-green-400 text-green-400' :
                 status === 'busy' ? 'fill-yellow-400 text-yellow-400' :
                 'fill-muted-foreground text-muted-foreground'
               }`} />
               {status.charAt(0).toUpperCase() + status.slice(1)}
+              {isUpdating && '...'}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            <DropdownMenuItem onClick={() => handleStatusChange('online')}>
+            <DropdownMenuItem 
+              onClick={() => handleStatusChange('online')}
+              disabled={isUpdating}
+            >
               <Circle className="mr-2 h-2 w-2 fill-green-400 text-green-400" />
               Online
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleStatusChange('busy')}>
+            <DropdownMenuItem 
+              onClick={() => handleStatusChange('busy')}
+              disabled={isUpdating}
+            >
               <Circle className="mr-2 h-2 w-2 fill-yellow-400 text-yellow-400" />
               Busy
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleStatusChange('offline')}>
+            <DropdownMenuItem 
+              onClick={() => handleStatusChange('offline')}
+              disabled={isUpdating}
+            >
               <Circle className="mr-2 h-2 w-2 fill-muted-foreground text-muted-foreground" />
               Offline
             </DropdownMenuItem>

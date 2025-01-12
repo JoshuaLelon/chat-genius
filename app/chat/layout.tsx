@@ -135,20 +135,54 @@ export default function ChatLayout({
 
   const handleWorkspaceSelect = async (workspaceId: string) => {
     try {
-      const workspaceData = await getWorkspace(workspaceId);
-      setActiveWorkspace(workspaceData);
-      // Reset active channel and DM when switching workspaces
-      setActiveChannelId(undefined);
-      setActiveUserId(undefined);
-      // Redirect to the first channel of the new workspace
+      console.log("[ChatLayout] Starting workspace switch:", {
+        fromWorkspaceId: activeWorkspace?.id,
+        fromWorkspaceName: activeWorkspace?.name,
+        toWorkspaceId: workspaceId,
+        currentChannelId: activeChannelId,
+        currentUserId: activeUserId
+      })
+      
+      // Fetch new workspace data
+      const workspaceData = await getWorkspace(workspaceId)
+      
+      console.log("[ChatLayout] Fetched new workspace data:", {
+        workspaceId: workspaceData.id,
+        workspaceName: workspaceData.name,
+        channelCount: workspaceData.channels.length,
+        channels: workspaceData.channels.map(c => ({ id: c.id, name: c.name }))
+      })
+      
+      // Update workspace state first
+      setActiveWorkspace(workspaceData)
+      
+      // Reset active states
+      setActiveChannelId(undefined)
+      setActiveUserId(undefined)
+      
+      // Navigate to first channel after a small delay to ensure state updates are complete
       if (workspaceData.channels.length > 0) {
-        const firstChannelId = workspaceData.channels[0].id;
-        setActiveChannelId(firstChannelId);
-        router.push(`/chat/channel/${firstChannelId}`);
+        const firstChannelId = workspaceData.channels[0].id
+        console.log("[ChatLayout] Navigating to first channel:", {
+          workspaceId: workspaceData.id,
+          workspaceName: workspaceData.name,
+          channelId: firstChannelId,
+          channelName: workspaceData.channels[0].name
+        })
+        // Use setTimeout to ensure state updates are processed
+        setTimeout(() => {
+          setActiveChannelId(firstChannelId)
+          router.push(`/chat/channel/${firstChannelId}`)
+        }, 0)
       }
-      console.log('Workspace Selected:', { workspaceId, workspaceName: workspaceData.name });
+      
+      console.log("[ChatLayout] Workspace switch complete:", {
+        workspaceId: workspaceData.id,
+        workspaceName: workspaceData.name,
+        channelCount: workspaceData.channels.length
+      })
     } catch (error) {
-      console.error('Error fetching workspace:', error);
+      console.error('[ChatLayout] Error switching workspace:', error)
     }
   }
 

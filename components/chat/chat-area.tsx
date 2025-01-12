@@ -13,9 +13,17 @@ interface ChatAreaProps {
 }
 
 export function ChatArea({ channelId, dmUserId }: ChatAreaProps) {
-  const { workspace, currentUser, addMessage, updateMessage, removeMessage } = useChatContext()
+  const { workspace, currentUser, addMessage } = useChatContext()
   const [isLoading, setIsLoading] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  console.log("[ChatArea] Rendering with:", {
+    channelId,
+    dmUserId,
+    workspaceId: workspace.id,
+    workspaceName: workspace.name,
+    currentUser: currentUser.email
+  });
 
   const messages = channelId
     ? workspace.channels.find(c => c.id === channelId)?.messages || []
@@ -24,9 +32,13 @@ export function ChatArea({ channelId, dmUserId }: ChatAreaProps) {
         dm.participants.some(p => p.id === currentUser.id)
       )?.messages || []
 
+  console.log("[ChatArea] Found messages:", messages.length);
+
   const conversationName = channelId
     ? workspace.channels.find(c => c.id === channelId)?.name
-    : workspace.users.find(u => u.id === dmUserId)?.username
+    : workspace.users.find(u => u.id === dmUserId)?.email?.split('@')[0]
+
+  console.log("[ChatArea] Conversation name:", conversationName);
 
   useEffect(() => {
     // Simulate loading for smoother transitions
@@ -40,26 +52,18 @@ export function ChatArea({ channelId, dmUserId }: ChatAreaProps) {
   }, [messages])
 
   const handleSendMessage = async (content: string) => {
+    console.log("[ChatArea] Sending message:", {
+      channelId,
+      dmUserId,
+      content,
+      currentUser: currentUser.email
+    });
+
     try {
       await addMessage(channelId || null, dmUserId || null, content)
+      console.log("[ChatArea] Message sent successfully");
     } catch (error) {
-      console.error("Error sending message:", error)
-    }
-  }
-
-  const handleUpdateMessage = async (messageId: string, content: string) => {
-    try {
-      await updateMessage(channelId || null, dmUserId || null, messageId, content)
-    } catch (error) {
-      console.error("Error updating message:", error)
-    }
-  }
-
-  const handleDeleteMessage = async (messageId: string) => {
-    try {
-      await removeMessage(channelId || null, dmUserId || null, messageId)
-    } catch (error) {
-      console.error("Error deleting message:", error)
+      console.error("[ChatArea] Error sending message:", error)
     }
   }
 
@@ -85,6 +89,7 @@ export function ChatArea({ channelId, dmUserId }: ChatAreaProps) {
   }
 
   if (!conversationName) {
+    console.log("[ChatArea] Conversation not found");
     return (
       <div className="flex items-center justify-center h-full">
         <p className="text-muted-foreground">Conversation not found</p>
@@ -100,8 +105,6 @@ export function ChatArea({ channelId, dmUserId }: ChatAreaProps) {
             key={message.id}
             message={message}
             currentUser={currentUser}
-            onUpdate={handleUpdateMessage}
-            onDelete={handleDeleteMessage}
           />
         ))}
         <div ref={messagesEndRef} />
