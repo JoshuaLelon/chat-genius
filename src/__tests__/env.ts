@@ -5,3 +5,7 @@ import { resolve } from 'path';
 config({
   path: resolve(__dirname, '../../.env'),
 }); 
+
+// Mock environment variables needed for tests
+process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://localhost:54321';
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'; 

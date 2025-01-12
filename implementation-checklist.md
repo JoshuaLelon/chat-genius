@@ -29,10 +29,10 @@
 - [x] Configure real-time subscriptions for status updates
 
 ## 5. Testing Infrastructure
-- [ ] Write unit tests for all Supabase interaction functions
+- [x] Write unit tests for all API endpoints
+- [x] Write unit tests for all Supabase interaction functions (if it's not covered by the previous checklist item)
 - [ ] Create integration tests for API endpoints
-- [ ] Implement end-to-end tests for critical user flows
-- [ ] Set up test database for automated testing
+
 
 ## 6. Frontend Integration (Step-by-Step)
 - [ ] Update ChatContext to use Supabase client
@@ -42,6 +42,8 @@
 - [ ] Update all components to handle loading states and errors
 
 ## 7. Deployment & Monitoring
+- [ ] Implement end-to-end tests for critical user flows
+- [ ] Set up test database for automated testing
 - [ ] Set up CI/CD pipeline with GitHub Actions
 - [ ] Deploy initial version to Vercel
 - [ ] Apply production database migrations
