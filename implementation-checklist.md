@@ -8,20 +8,18 @@
 - [x] Create `lib/supabase.ts` with client initialization
 
 ## 2. Database Design & Setup
-- [ ] Design comprehensive data model for users, workspaces, channels, messages, and reactions
-- [ ] Create SQL migration files for all tables with proper relationships and constraints
-- [ ] Implement Row Level Security (RLS) policies for each table
-- [ ] Apply migrations to development database
-- [ ] Write script to convert existing mock data to match new schema
-- [ ] Seed development database with converted mock data
+- [x] Design comprehensive data model for users, workspaces, channels, messages, and reactions
+- [x] Create SQL migration files for all tables with proper relationships and constraints
+- [x] Implement Row Level Security (RLS) policies for each table
+- [x] Apply migrations to development database
+- [x] Write script to convert existing mock data to match new schema
+- [x] Seed development database with converted mock data
 
 ## 3. Environment Configuration
 - [x] Set up `.env.local` with Supabase development credentials
 - [x] Configure Vercel environment variables for production
-- [ ] Configure local Supabase instance
 
 ## 4. API Implementation
-- [ ] Create authentication API routes (login, signup, logout)
 - [ ] Implement workspace and channel CRUD operations
 - [ ] Create message sending and retrieval endpoints
 - [ ] Build reaction adding/removing endpoints
@@ -41,7 +39,6 @@
 - [ ] Implement real-time status updates in UI
 - [ ] Convert message sending/receiving to use Supabase
 - [ ] Integrate reaction system with Supabase
-- [ ] Replace mock authentication with Supabase Auth
 - [ ] Update all components to handle loading states and errors
 
 ## 7. Deployment & Monitoring
@@ -51,7 +48,11 @@
 - [ ] Configure monitoring tools and error tracking
 - [ ] Set up alerts for critical issues
 
-## 8. Final Verification
+## 8. Auth
+- [ ] Create authentication API routes (login, signup, logout)
+- [ ] Replace mock authentication with Supabase Auth
+
+## 9. Final Verification
 - [ ] Test all features in production environment
 - [ ] Verify real-time functionality across multiple sessions
 - [ ] Confirm data persistence and auth flow
