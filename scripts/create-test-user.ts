@@ -12,39 +12,73 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 async function createTestUser() {
-  const email = 'test@chat-genius.local';
-  const password = 'test-password-123';
+  try {
+    // Create user in auth.users
+    const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+      email: process.env.NEXT_PUBLIC_TEST_USER_EMAIL!,
+      password: process.env.NEXT_PUBLIC_TEST_USER_PASSWORD!,
+      email_confirm: true // Auto-confirm email
+    });
 
-  // Create the user
-  const { data: user, error: createError } = await supabase.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true // Automatically confirm the email
-  });
+    if (authError) throw authError;
+    if (!authUser.user) throw new Error('Failed to create auth user');
 
-  if (createError) {
-    console.error('Error creating test user:', createError);
-    return;
+    console.log('Created auth user:', authUser.user.id);
+
+    // Create profile in public.profiles
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .insert({
+        id: authUser.user.id,
+        username: 'testuser',
+        status: 'offline'
+      });
+
+    if (profileError) throw profileError;
+
+    console.log('Created user profile');
+
+    // Create a default workspace
+    const { data: workspace, error: workspaceError } = await supabase
+      .from('workspaces')
+      .insert({
+        name: 'Test Workspace'
+      })
+      .select()
+      .single();
+
+    if (workspaceError) throw workspaceError;
+
+    console.log('Created workspace:', workspace.id);
+
+    // Add user to workspace
+    const { error: memberError } = await supabase
+      .from('workspace_members')
+      .insert({
+        workspace_id: workspace.id,
+        user_id: authUser.user.id
+      });
+
+    if (memberError) throw memberError;
+
+    console.log('Added user to workspace');
+
+    // Create a default channel
+    const { error: channelError } = await supabase
+      .from('channels')
+      .insert({
+        workspace_id: workspace.id,
+        name: 'general'
+      });
+
+    if (channelError) throw channelError;
+
+    console.log('Created default channel');
+
+    console.log('Test user setup complete!');
+  } catch (error) {
+    console.error('Error creating test user:', error);
   }
-
-  // Create profile for the user
-  const { error: profileError } = await supabase
-    .from('profiles')
-    .insert([{
-      id: user.user.id,
-      username: 'test-user',
-      status: 'online'
-    }]);
-
-  if (profileError) {
-    console.error('Error creating test profile:', profileError);
-    return;
-  }
-
-  console.log('Test user created successfully:');
-  console.log('Email:', email);
-  console.log('Password:', password);
-  console.log('User ID:', user.user.id);
 }
 
 createTestUser(); 

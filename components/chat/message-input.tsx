@@ -2,73 +2,53 @@
 
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { useChatContext } from "@/contexts/ChatContext"
-import { SendHorizontal } from 'lucide-react'
-import { useState, KeyboardEvent } from "react"
-import { toast } from "sonner"
-import { createMessage } from "@/lib/supabase"
+import { useState } from "react"
 
 interface MessageInputProps {
-  channelId: string | null
-  dmId: string | null
+  onSendMessage: (content: string) => Promise<void>
 }
 
-export function MessageInput({ channelId, dmId }: MessageInputProps) {
-  const [message, setMessage] = useState("")
-  const [isSending, setIsSending] = useState(false)
-  const { currentUser } = useChatContext()
+export function MessageInput({ onSendMessage }: MessageInputProps) {
+  const [content, setContent] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
 
-  const sendMessage = async () => {
-    if (!message.trim() || isSending) return
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!content.trim() || isLoading) return
 
-    setIsSending(true)
     try {
-      if (channelId) {
-        await createMessage({
-          content: message.trim(),
-          channel_id: channelId,
-          user_id: currentUser.id
-        })
-      } else if (dmId) {
-        await createMessage({
-          content: message.trim(),
-          dm_id: dmId,
-          user_id: currentUser.id
-        })
-      }
-      setMessage("")
+      setIsLoading(true)
+      await onSendMessage(content)
+      setContent("")
     } catch (error) {
-      console.error('Error sending message:', error)
-      toast.error('Failed to send message. Please try again.')
+      console.error("Error sending message:", error)
     } finally {
-      setIsSending(false)
+      setIsLoading(false)
     }
   }
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
-      void sendMessage()
+      handleSubmit(e)
     }
   }
 
   return (
-    <form onSubmit={(e) => { e.preventDefault(); void sendMessage(); }} className="flex items-end gap-2 border-t bg-background p-4">
-      <Textarea
-        value={message}
-        onChange={(e) => setMessage(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="Type your message..."
-        className="min-h-[80px]"
-        disabled={isSending}
-      />
-      <Button 
-        type="submit" 
-        className="h-[80px] bg-[#b0e6ff] text-black hover:bg-[#b0e6ff]/90"
-        disabled={isSending}
-      >
-        <SendHorizontal className={`h-4 w-4 ${isSending ? 'animate-spin' : ''}`} />
-      </Button>
+    <form onSubmit={handleSubmit} className="p-4 border-t">
+      <div className="flex gap-2">
+        <Textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Type a message..."
+          className="min-h-[40px] max-h-[200px]"
+          disabled={isLoading}
+        />
+        <Button type="submit" disabled={!content.trim() || isLoading}>
+          Send
+        </Button>
+      </div>
     </form>
   )
 }

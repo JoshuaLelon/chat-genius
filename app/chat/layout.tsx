@@ -2,10 +2,10 @@
 
 import { Sidebar } from "@/components/sidebar/sidebar"
 import { ChatProvider } from "@/contexts/ChatContext"
-import { users, workspaces } from "@/lib/data"
 import { useRouter, usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 import { Workspace, User } from "@/types"
+import { supabase, getWorkspace } from "@/lib/supabase"
 
 export default function ChatLayout({
   children,
@@ -14,45 +14,71 @@ export default function ChatLayout({
 }) {
   const router = useRouter()
   const pathname = usePathname()
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [currentUser, setCurrentUser] = useState(users[0])
-  const [activeWorkspace, setActiveWorkspace] = useState<Workspace>(workspaces[0])
+  const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const [activeWorkspace, setActiveWorkspace] = useState<Workspace | null>(null)
   const [activeChannelId, setActiveChannelId] = useState<string | undefined>(undefined)
-  const [activeUserId, setActiveUserId] = useState<string | undefined>(undefined) // Replaced activeDmId
+  const [activeUserId, setActiveUserId] = useState<string | undefined>(undefined)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const userId = localStorage.getItem('currentUserId')
-    if (userId) {
-      const user = users.find(u => u.id === userId)
-      if (user) {
-        setCurrentUser(user)
-        setIsLoggedIn(true)
-        // Set the active workspace to the first workspace the user is a member of
-        const userWorkspace = workspaces.find(w => w.users.some(u => u.id === user.id))
-        if (userWorkspace) {
-          // Load persisted user statuses
-          const storedStatuses = JSON.parse(localStorage.getItem('userStatuses') || '{}')
-          const updatedWorkspace = {
-            ...userWorkspace,
-            users: userWorkspace.users.map(u => ({
-              ...u,
-              status: storedStatuses[u.id] || u.status
-            }))
-          }
-          setActiveWorkspace(updatedWorkspace)
-          // Set the first channel of the workspace as active
-          if (updatedWorkspace.channels.length > 0) {
-            setActiveChannelId(updatedWorkspace.channels[0].id)
-            router.push(`/chat/channel/${updatedWorkspace.channels[0].id}`)
-          }
+    const checkSession = async () => {
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+
+        if (!session) {
+          handleLogout();
+          return;
         }
-      } else {
-        handleLogout()
+
+        // Get user profile from Supabase
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        if (profileError) throw profileError;
+
+        if (!profile) {
+          handleLogout();
+          return;
+        }
+
+        setCurrentUser(profile);
+
+        // Fetch user's workspaces from Supabase
+        try {
+          const { data: workspaces, error } = await supabase
+            .from('workspaces')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+          if (error) throw error;
+
+          if (workspaces && workspaces.length > 0) {
+            // Get the first workspace's full data
+            const workspaceData = await getWorkspace(workspaces[0].id);
+            setActiveWorkspace(workspaceData);
+            // Set the first channel of the workspace as active
+            if (workspaceData.channels.length > 0) {
+              setActiveChannelId(workspaceData.channels[0].id);
+              router.push(`/chat/channel/${workspaceData.channels[0].id}`);
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching workspaces:', error);
+        }
+      } catch (error) {
+        console.error('Error checking session:', error);
+        handleLogout();
+      } finally {
+        setIsLoading(false);
       }
-    } else {
-      handleLogout()
-    }
-  }, [])
+    };
+
+    checkSession();
+  }, []);
 
   useEffect(() => {
     const channelMatch = pathname.match(/\/chat\/channel\/(.+)/)
@@ -67,48 +93,35 @@ export default function ChatLayout({
     }
   }, [pathname])
 
-  useEffect(() => {
-    console.log('Current Route:', pathname)
-    console.log('User Statuses:')
-    activeWorkspace.users.forEach(user => {
-      console.log(`${user.username}: ${user.status}`)
-    })
-  }, [pathname, activeWorkspace])
-
-  const handleLogout = () => {
-    localStorage.removeItem('currentUserId')
-    setIsLoggedIn(false)
-    router.push('/') // Redirect to the login page
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setCurrentUser(null);
+    setActiveWorkspace(null);
+    router.push('/');
   }
 
-  const handleWorkspaceSelect = (workspaceId: string) => {
-    const newWorkspace = workspaces.find(w => w.id === workspaceId)
-    if (newWorkspace) {
-      setActiveWorkspace(newWorkspace)
+  const handleWorkspaceSelect = async (workspaceId: string) => {
+    try {
+      const workspaceData = await getWorkspace(workspaceId);
+      setActiveWorkspace(workspaceData);
       // Reset active channel and DM when switching workspaces
-      setActiveChannelId(undefined)
-      setActiveUserId(undefined) // Replaced activeDmId
+      setActiveChannelId(undefined);
+      setActiveUserId(undefined);
       // Redirect to the first channel of the new workspace
-      if (newWorkspace.channels.length > 0) {
-        const firstChannelId = newWorkspace.channels[0].id
-        setActiveChannelId(firstChannelId)
-        router.push(`/chat/channel/${firstChannelId}`)
+      if (workspaceData.channels.length > 0) {
+        const firstChannelId = workspaceData.channels[0].id;
+        setActiveChannelId(firstChannelId);
+        router.push(`/chat/channel/${firstChannelId}`);
       }
+      console.log('Workspace Selected:', { workspaceId, workspaceName: workspaceData.name });
+    } catch (error) {
+      console.error('Error fetching workspace:', error);
     }
-    console.log('Workspace Selected:', { workspaceId, newWorkspace: newWorkspace ? newWorkspace.name : null });
   }
 
-  if (!isLoggedIn) {
-    return null // Or a loading spinner if you prefer
+  if (isLoading || !currentUser || !activeWorkspace) {
+    return <div className="flex h-screen items-center justify-center">Loading...</div>
   }
-
-  console.log('ChatLayout State:', {
-    isLoggedIn,
-    currentUser: currentUser.username,
-    activeWorkspace: activeWorkspace ? { id: activeWorkspace.id, name: activeWorkspace.name } : null,
-    activeChannelId,
-    activeUserId // Replaced activeDmId
-  });
 
   return (
     <ChatProvider initialWorkspace={activeWorkspace} currentUser={currentUser}>
@@ -118,7 +131,7 @@ export default function ChatLayout({
           currentUser={currentUser}
           onLogout={handleLogout}
           activeChannelId={activeChannelId}
-          activeUserId={activeUserId} // Replaced activeDmId
+          activeUserId={activeUserId}
           onWorkspaceSelect={handleWorkspaceSelect}
         />
         {children}

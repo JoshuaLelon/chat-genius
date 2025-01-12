@@ -1,10 +1,86 @@
 import { createClient } from '@supabase/supabase-js'
-import { Message, Reaction, UserPresence } from '@/types'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { Message, Reaction, User, Channel, DirectMessage, Workspace } from '@/types'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
+// Create authenticated Supabase client
+export const supabase = createClientComponentClient()
+
+// Workspace functions
+export async function getWorkspace(workspaceId: string): Promise<Workspace> {
+  // Get workspace
+  const { data: workspace, error: workspaceError } = await supabase
+    .from('workspaces')
+    .select('*')
+    .eq('id', workspaceId)
+    .single()
+  if (workspaceError) throw workspaceError
+
+  // Get workspace members (users)
+  const { data: users, error: usersError } = await supabase
+    .from('profiles')
+    .select('*')
+    .in('id', (
+      await supabase
+        .from('workspace_members')
+        .select('user_id')
+        .eq('workspace_id', workspaceId)
+    ).data?.map(m => m.user_id) || [])
+  if (usersError) throw usersError
+
+  // Get channels
+  const { data: channels, error: channelsError } = await supabase
+    .from('channels')
+    .select(`
+      *,
+      messages:messages(
+        *,
+        user:profiles(*),
+        reactions:reactions(
+          *,
+          user:profiles(*)
+        )
+      )
+    `)
+    .eq('workspace_id', workspaceId)
+  if (channelsError) throw channelsError
+
+  // Get direct messages
+  const { data: directMessages, error: dmsError } = await supabase
+    .from('direct_messages')
+    .select(`
+      *,
+      participants:dm_participants(
+        user:profiles(*)
+      ),
+      messages:messages(
+        *,
+        user:profiles(*),
+        reactions:reactions(
+          *,
+          user:profiles(*)
+        )
+      )
+    `)
+    .eq('workspace_id', workspaceId)
+  if (dmsError) throw dmsError
+
+  return {
+    ...workspace,
+    users,
+    channels: channels.map(channel => ({
+      ...channel,
+      messages: channel.messages || []
+    })),
+    directMessages: directMessages.map(dm => ({
+      ...dm,
+      participants: dm.participants?.map(p => p.user) || [],
+      messages: dm.messages || []
+    }))
+  }
+}
 
 // Message functions
 export async function createMessage({ content, channel_id, dm_id, user_id }: {
@@ -21,7 +97,7 @@ export async function createMessage({ content, channel_id, dm_id, user_id }: {
       dm_id,
       user_id
     })
-    .select('*, user:users(*)')
+    .select('*, user:profiles(*)')
     .single()
 
   if (error) throw error
@@ -38,48 +114,50 @@ export async function deleteMessage(messageId: string) {
 }
 
 // Reaction functions
-export async function addReaction(messageId: string, emoji: string) {
+export async function addReaction(messageId: string, emoji: string, userId: string) {
   const { data, error } = await supabase
     .from('reactions')
     .insert({
       message_id: messageId,
-      emoji
+      emoji,
+      user_id: userId
     })
-    .select('*, user:users(*)')
+    .select('*, user:profiles(*)')
     .single()
 
   if (error) throw error
   return data
 }
 
-export async function removeReaction(messageId: string, emoji: string) {
+export async function removeReaction(messageId: string, emoji: string, userId: string) {
   const { error } = await supabase
     .from('reactions')
     .delete()
     .match({
       message_id: messageId,
-      emoji
+      emoji,
+      user_id: userId
     })
 
   if (error) throw error
 }
 
-// Real-time subscription functions
+// User functions
+export async function updateUserStatus(userId: string, status: 'online' | 'offline' | 'busy') {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ status })
+    .eq('id', userId)
+
+  if (error) throw error
+}
+
+// Real-time subscriptions
 export type MessageSubscriptionCallback = (payload: {
-  new: Message & { user: any }
-  old: Message & { user: any } | null
+  new: Message & { user: User }
+  old: Message & { user: User } | null
   eventType: 'INSERT' | 'UPDATE' | 'DELETE'
 }) => void
-
-interface RealtimePostgresChangesPayload<T> {
-  commit_timestamp: string
-  errors: null | any[]
-  eventType: 'INSERT' | 'UPDATE' | 'DELETE'
-  new: T
-  old: T | null
-  schema: string
-  table: string
-}
 
 export function subscribeToChannelMessages(
   channelId: string,
@@ -95,31 +173,31 @@ export function subscribeToChannelMessages(
         table: 'messages',
         filter: `channel_id=eq.${channelId}`
       },
-      async (payload: RealtimePostgresChangesPayload<Message>) => {
+      async (payload: any) => {
         // Fetch user data for the message
         if (payload.new) {
           const { data: userData } = await supabase
-            .from('users')
-            .select('id, username, avatar')
+            .from('profiles')
+            .select('*')
             .eq('id', payload.new.user_id)
             .single()
           
-          ;(payload.new as any).user = userData
+          payload.new.user = userData
         }
         
         if (payload.old) {
           const { data: userData } = await supabase
-            .from('users')
-            .select('id, username, avatar')
+            .from('profiles')
+            .select('*')
             .eq('id', payload.old.user_id)
             .single()
           
-          ;(payload.old as any).user = userData
+          payload.old.user = userData
         }
 
         callback({
-          new: payload.new as Message & { user: any },
-          old: payload.old as (Message & { user: any }) | null,
+          new: payload.new,
+          old: payload.old,
           eventType: payload.eventType
         })
       }
@@ -132,8 +210,8 @@ export function unsubscribeFromChannelMessages(channelId: string) {
 }
 
 export type ReactionSubscriptionCallback = (payload: {
-  new: Reaction & { user: any }
-  old: Reaction & { user: any } | null
+  new: Reaction & { user: User }
+  old: Reaction & { user: User } | null
   eventType: 'INSERT' | 'UPDATE' | 'DELETE'
 }) => void
 
@@ -151,31 +229,31 @@ export function subscribeToMessageReactions(
         table: 'reactions',
         filter: `message_id=eq.${messageId}`
       },
-      async (payload: RealtimePostgresChangesPayload<Reaction>) => {
+      async (payload: any) => {
         // Fetch user data for the reaction
         if (payload.new) {
           const { data: userData } = await supabase
-            .from('users')
-            .select('id, username, avatar')
+            .from('profiles')
+            .select('*')
             .eq('id', payload.new.user_id)
             .single()
           
-          ;(payload.new as any).user = userData
+          payload.new.user = userData
         }
         
         if (payload.old) {
           const { data: userData } = await supabase
-            .from('users')
-            .select('id, username, avatar')
+            .from('profiles')
+            .select('*')
             .eq('id', payload.old.user_id)
             .single()
           
-          ;(payload.old as any).user = userData
+          payload.old.user = userData
         }
 
         callback({
-          new: payload.new as Reaction & { user: any },
-          old: payload.old as (Reaction & { user: any }) | null,
+          new: payload.new,
+          old: payload.old,
           eventType: payload.eventType
         })
       }
@@ -187,22 +265,9 @@ export function unsubscribeFromMessageReactions(messageId: string) {
   return supabase.channel(`reactions:${messageId}`).unsubscribe()
 }
 
-// User presence functions
-export async function updateUserStatus(userId: string, status: 'online' | 'offline' | 'busy') {
-  const { error } = await supabase
-    .from('user_presence')
-    .upsert({
-      user_id: userId,
-      status,
-      last_seen: new Date().toISOString()
-    })
-
-  if (error) throw error
-}
-
 export type StatusSubscriptionCallback = (payload: {
-  new: UserPresence
-  old: UserPresence | null
+  new: User
+  old: User | null
   eventType: 'INSERT' | 'UPDATE' | 'DELETE'
 }) => void
 
@@ -217,10 +282,10 @@ export function subscribeToUserStatus(
       {
         event: '*',
         schema: 'public',
-        table: 'user_presence',
-        filter: `user_id=eq.${userId}`
+        table: 'profiles',
+        filter: `id=eq.${userId}`
       },
-      (payload: RealtimePostgresChangesPayload<UserPresence>) => {
+      (payload: any) => {
         callback({
           new: payload.new,
           old: payload.old,

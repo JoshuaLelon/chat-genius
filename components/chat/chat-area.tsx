@@ -1,145 +1,112 @@
 "use client"
 
-import { ChatMessage } from "@/components/chat/message"
-import { MessageInput } from "@/components/chat/message-input"
-import { useChatContext } from "@/contexts/ChatContext"
-import { ScrollArea } from "@/components/ui/scroll-area"
+import { Message, User } from "@/types"
 import { useEffect, useRef, useState } from "react"
+import { MessageBubble } from "./message-bubble"
+import { MessageInput } from "./message-input"
+import { useChatContext } from "@/contexts/ChatContext"
 import { Skeleton } from "@/components/ui/skeleton"
-import { subscribeToChannelMessages, subscribeToMessageReactions, unsubscribeFromChannelMessages } from "@/lib/supabase"
-import { Message } from "@/types"
 
 interface ChatAreaProps {
-  channelId: string | null
-  dmId: string | null
+  channelId?: string
+  dmUserId?: string
 }
 
-export function ChatArea({ channelId, dmId }: ChatAreaProps) {
-  const { workspace, currentUser } = useChatContext()
-  const scrollRef = useRef<HTMLDivElement>(null)
+export function ChatArea({ channelId, dmUserId }: ChatAreaProps) {
+  const { workspace, currentUser, addMessage, updateMessage, removeMessage } = useChatContext()
   const [isLoading, setIsLoading] = useState(true)
-  const [messages, setMessages] = useState<Message[]>([])
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const messages = channelId
+    ? workspace.channels.find(c => c.id === channelId)?.messages || []
+    : workspace.directMessages.find(dm =>
+        dm.participants.some(p => p.id === dmUserId) &&
+        dm.participants.some(p => p.id === currentUser.id)
+      )?.messages || []
+
+  const conversationName = channelId
+    ? workspace.channels.find(c => c.id === channelId)?.name
+    : workspace.users.find(u => u.id === dmUserId)?.username
 
   useEffect(() => {
+    // Simulate loading for smoother transitions
     setIsLoading(true)
-    setMessages([])
-
-    // Initialize messages from workspace
-    const initialMessages = channelId
-      ? workspace.channels.find(c => c.id === channelId)?.messages || []
-      : workspace.directMessages.find(d => 
-          d.participants.includes(currentUser.id) && 
-          d.participants.includes(dmId!)
-        )?.messages || []
-    
-    setMessages(initialMessages)
-
-    // Subscribe to real-time updates
-    let messageSubscription: any
-    if (channelId) {
-      messageSubscription = subscribeToChannelMessages(channelId, (payload) => {
-        if (payload.eventType === 'INSERT') {
-          setMessages(prev => [...prev, payload.new])
-        } else if (payload.eventType === 'UPDATE') {
-          setMessages(prev => prev.map(m => m.id === payload.new.id ? payload.new : m))
-        } else if (payload.eventType === 'DELETE') {
-          setMessages(prev => prev.filter(m => m.id !== payload.old?.id))
-        }
-      })
-    }
-
-    // Set up reaction subscriptions for each message
-    const reactionSubscriptions = messages.map(message => 
-      subscribeToMessageReactions(message.id, (payload) => {
-        setMessages(prev => prev.map(m => {
-          if (m.id === message.id) {
-            if (payload.eventType === 'INSERT') {
-              return { ...m, reactions: [...m.reactions, payload.new] }
-            } else if (payload.eventType === 'UPDATE') {
-              return { ...m, reactions: m.reactions.map(r => r.id === payload.new.id ? payload.new : r) }
-            } else if (payload.eventType === 'DELETE') {
-              return { ...m, reactions: m.reactions.filter(r => r.id !== payload.old?.id) }
-            }
-          }
-          return m
-        }))
-      })
-    )
-
     const timer = setTimeout(() => setIsLoading(false), 500)
-
-    return () => {
-      clearTimeout(timer)
-      if (channelId) {
-        unsubscribeFromChannelMessages(channelId)
-      }
-      reactionSubscriptions.forEach(sub => sub.unsubscribe())
-    }
-  }, [channelId, dmId, workspace, currentUser.id])
+    return () => clearTimeout(timer)
+  }, [channelId, dmUserId])
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
+
+  const handleSendMessage = async (content: string) => {
+    try {
+      await addMessage(channelId || null, dmUserId || null, content)
+    } catch (error) {
+      console.error("Error sending message:", error)
+    }
+  }
+
+  const handleUpdateMessage = async (messageId: string, content: string) => {
+    try {
+      await updateMessage(channelId || null, dmUserId || null, messageId, content)
+    } catch (error) {
+      console.error("Error updating message:", error)
+    }
+  }
+
+  const handleDeleteMessage = async (messageId: string) => {
+    try {
+      await removeMessage(channelId || null, dmUserId || null, messageId)
+    } catch (error) {
+      console.error("Error deleting message:", error)
+    }
+  }
 
   if (isLoading) {
     return (
-      <div className="flex h-full flex-col">
-        <ScrollArea className="flex-1 px-4">
-          <div className="space-y-4 py-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="flex gap-3">
-                <Skeleton className="h-8 w-8 rounded-full" />
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-[200px]" />
-                  <Skeleton className="h-4 w-[300px]" />
-                </div>
+      <div className="flex flex-col h-full">
+        <div className="flex-1 p-4 space-y-4 overflow-y-auto">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="flex items-start gap-4">
+              <Skeleton className="w-10 h-10 rounded-full" />
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-[200px]" />
+                <Skeleton className="h-4 w-[300px]" />
               </div>
-            ))}
-          </div>
-        </ScrollArea>
-        <div className="border-t p-4">
-          <Skeleton className="h-[80px] w-full" />
+            </div>
+          ))}
+        </div>
+        <div className="p-4 border-t">
+          <Skeleton className="h-10 w-full" />
         </div>
       </div>
     )
   }
 
-  const conversationName = channelId
-    ? workspace.channels.find(c => c.id === channelId)?.name
-    : workspace.users.find(u => u.id === dmId)?.username
-
   if (!conversationName) {
     return (
-      <div className="flex h-full items-center justify-center">
+      <div className="flex items-center justify-center h-full">
         <p className="text-muted-foreground">Conversation not found</p>
       </div>
     )
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <ScrollArea className="flex-1 px-4">
-        <div className="space-y-2 py-4" ref={scrollRef}>
-          {messages.length > 0 ? (
-            messages.map((message) => (
-              <ChatMessage 
-                key={message.id} 
-                message={message} 
-                currentUser={currentUser} 
-                channelId={channelId}
-                dmId={dmId}
-              />
-            ))
-          ) : (
-            <div className="flex h-full items-center justify-center">
-              <p className="text-muted-foreground">No messages yet. Start a conversation!</p>
-            </div>
-          )}
-        </div>
-      </ScrollArea>
-      <MessageInput channelId={channelId} dmId={dmId} />
+    <div className="flex flex-col h-full">
+      <div className="flex-1 p-4 space-y-4 overflow-y-auto">
+        {messages.map((message) => (
+          <MessageBubble
+            key={message.id}
+            message={message}
+            currentUser={currentUser}
+            onUpdate={handleUpdateMessage}
+            onDelete={handleDeleteMessage}
+          />
+        ))}
+        <div ref={messagesEndRef} />
+      </div>
+      <MessageInput onSendMessage={handleSendMessage} />
     </div>
   )
 }
