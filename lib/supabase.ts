@@ -5,20 +5,27 @@ import { Message, Reaction, User, Channel, DirectMessage, Workspace } from '@/ty
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
+console.log("[Supabase] Creating client with URL:", supabaseUrl);
+
 // Create authenticated Supabase client
 export const supabase = createClientComponentClient()
 
 // Workspace functions
 export async function getWorkspace(workspaceId: string): Promise<Workspace> {
+  console.log("[Supabase] Getting workspace:", workspaceId);
+  
   // Get workspace
   const { data: workspace, error: workspaceError } = await supabase
     .from('workspaces')
     .select('*')
     .eq('id', workspaceId)
     .single()
+  
+  console.log("[Supabase] Workspace query result:", { workspace, workspaceError });
   if (workspaceError) throw workspaceError
 
   // Get workspace members (users)
+  console.log("[Supabase] Getting workspace members...");
   const { data: users, error: usersError } = await supabase
     .from('profiles')
     .select('*')
@@ -28,9 +35,12 @@ export async function getWorkspace(workspaceId: string): Promise<Workspace> {
         .select('user_id')
         .eq('workspace_id', workspaceId)
     ).data?.map(m => m.user_id) || [])
+  
+  console.log("[Supabase] Workspace members result:", { users, usersError });
   if (usersError) throw usersError
 
   // Get channels
+  console.log("[Supabase] Getting channels...");
   const { data: channels, error: channelsError } = await supabase
     .from('channels')
     .select(`
@@ -45,9 +55,12 @@ export async function getWorkspace(workspaceId: string): Promise<Workspace> {
       )
     `)
     .eq('workspace_id', workspaceId)
+  
+  console.log("[Supabase] Channels result:", { channels, channelsError });
   if (channelsError) throw channelsError
 
   // Get direct messages
+  console.log("[Supabase] Getting direct messages...");
   const { data: directMessages, error: dmsError } = await supabase
     .from('direct_messages')
     .select(`
@@ -65,9 +78,11 @@ export async function getWorkspace(workspaceId: string): Promise<Workspace> {
       )
     `)
     .eq('workspace_id', workspaceId)
+  
+  console.log("[Supabase] Direct messages result:", { directMessages, dmsError });
   if (dmsError) throw dmsError
 
-  return {
+  const result = {
     ...workspace,
     users,
     channels: channels.map(channel => ({
@@ -79,7 +94,10 @@ export async function getWorkspace(workspaceId: string): Promise<Workspace> {
       participants: dm.participants?.map(p => p.user) || [],
       messages: dm.messages || []
     }))
-  }
+  };
+
+  console.log("[Supabase] Final workspace result:", result);
+  return result;
 }
 
 // Message functions
@@ -89,6 +107,8 @@ export async function createMessage({ content, channel_id, dm_id, user_id }: {
   dm_id?: string
   user_id: string
 }) {
+  console.log("[Supabase] Creating message:", { content, channel_id, dm_id, user_id });
+  
   const { data, error } = await supabase
     .from('messages')
     .insert({
@@ -98,10 +118,9 @@ export async function createMessage({ content, channel_id, dm_id, user_id }: {
       user_id
     })
     .select('*, user:profiles(*)')
-    .single()
-
-  if (error) throw error
-  return data
+  
+  console.log("[Supabase] Create message result:", { data, error });
+  return { data, error };
 }
 
 export async function deleteMessage(messageId: string) {

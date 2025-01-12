@@ -2,12 +2,20 @@
 drop schema if exists public cascade;
 create schema public;
 
--- Grant permissions to service role
-grant usage on schema public to service_role;
+-- Grant permissions to service role and anon role
+grant usage on schema public to service_role, anon, authenticated;
 grant all privileges on schema public to service_role;
+grant all privileges on schema public to anon;
+grant all privileges on schema public to authenticated;
 alter default privileges in schema public grant all on tables to service_role;
 alter default privileges in schema public grant all on sequences to service_role;
 alter default privileges in schema public grant all on functions to service_role;
+alter default privileges in schema public grant all on tables to anon;
+alter default privileges in schema public grant all on sequences to anon;
+alter default privileges in schema public grant all on functions to anon;
+alter default privileges in schema public grant all on tables to authenticated;
+alter default privileges in schema public grant all on sequences to authenticated;
+alter default privileges in schema public grant all on functions to authenticated;
 
 -- Create users table (extends Supabase auth.users)
 create table public.profiles (
@@ -85,12 +93,12 @@ create table public.reactions (
   primary key (message_id, user_id, emoji)
 );
 
--- Disable Row Level Security
-alter table public.profiles disable row level security;
-alter table public.workspaces disable row level security;
-alter table public.workspace_members disable row level security;
-alter table public.channels disable row level security;
-alter table public.messages disable row level security;
-alter table public.direct_messages disable row level security;
-alter table public.dm_participants disable row level security;
-alter table public.reactions disable row level security; 
+-- Enable RLS on all tables
+alter table public.profiles enable row level security;
+alter table public.workspaces enable row level security;
+alter table public.workspace_members enable row level security;
+alter table public.channels enable row level security;
+alter table public.messages enable row level security;
+alter table public.direct_messages enable row level security;
+alter table public.dm_participants enable row level security;
+alter table public.reactions enable row level security; 

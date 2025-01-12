@@ -24,24 +24,36 @@ export function LoginForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    console.log("[LoginForm] Starting login attempt...")
     setError(null)
     setIsLoading(true)
 
     try {
+      console.log("[LoginForm] Calling supabase.auth.signInWithPassword...")
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) throw error;
+      console.log("[LoginForm] Sign in response:", { data, error });
+
+      if (error) {
+        console.error("[LoginForm] Sign in error:", error);
+        throw error;
+      }
 
       if (data.user) {
+        console.log("[LoginForm] Sign in successful, user:", data.user);
+        console.log("[LoginForm] Session:", data.session);
+        console.log("[LoginForm] Redirecting to /chat...");
         router.push('/chat');
       }
     } catch (error: any) {
+      console.error("[LoginForm] Caught error:", error);
       setError(error.message || 'Failed to sign in');
     } finally {
       setIsLoading(false)
+      console.log("[LoginForm] Login attempt completed");
     }
   }
 

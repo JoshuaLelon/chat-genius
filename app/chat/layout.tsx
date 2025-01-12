@@ -22,15 +22,24 @@ export default function ChatLayout({
 
   useEffect(() => {
     const checkSession = async () => {
+      console.log("[ChatLayout] Starting session check...");
       try {
+        console.log("[ChatLayout] Getting session from Supabase...");
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) throw sessionError;
+        console.log("[ChatLayout] Session result:", { session, sessionError });
+
+        if (sessionError) {
+          console.error("[ChatLayout] Session error:", sessionError);
+          throw sessionError;
+        }
 
         if (!session) {
+          console.log("[ChatLayout] No session found, logging out...");
           handleLogout();
           return;
         }
 
+        console.log("[ChatLayout] Session found, getting user profile...");
         // Get user profile from Supabase
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
@@ -38,41 +47,60 @@ export default function ChatLayout({
           .eq('id', session.user.id)
           .single();
 
-        if (profileError) throw profileError;
+        console.log("[ChatLayout] Profile query result:", { profile, profileError });
+
+        if (profileError) {
+          console.error("[ChatLayout] Profile error:", profileError);
+          throw profileError;
+        }
 
         if (!profile) {
+          console.log("[ChatLayout] No profile found, logging out...");
           handleLogout();
           return;
         }
 
+        console.log("[ChatLayout] Setting current user:", profile);
         setCurrentUser(profile);
 
         // Fetch user's workspaces from Supabase
         try {
+          console.log("[ChatLayout] Fetching workspaces...");
           const { data: workspaces, error } = await supabase
             .from('workspaces')
             .select('*')
             .order('created_at', { ascending: false });
 
-          if (error) throw error;
+          console.log("[ChatLayout] Workspaces result:", { workspaces, error });
+
+          if (error) {
+            console.error("[ChatLayout] Workspaces error:", error);
+            throw error;
+          }
 
           if (workspaces && workspaces.length > 0) {
+            console.log("[ChatLayout] Found workspaces, getting first workspace data...");
             // Get the first workspace's full data
             const workspaceData = await getWorkspace(workspaces[0].id);
+            console.log("[ChatLayout] First workspace data:", workspaceData);
             setActiveWorkspace(workspaceData);
+            
             // Set the first channel of the workspace as active
             if (workspaceData.channels.length > 0) {
-              setActiveChannelId(workspaceData.channels[0].id);
-              router.push(`/chat/channel/${workspaceData.channels[0].id}`);
+              const firstChannelId = workspaceData.channels[0].id;
+              console.log("[ChatLayout] Setting first channel as active:", firstChannelId);
+              setActiveChannelId(firstChannelId);
+              router.push(`/chat/channel/${firstChannelId}`);
             }
           }
         } catch (error) {
-          console.error('Error fetching workspaces:', error);
+          console.error('[ChatLayout] Error fetching workspaces:', error);
         }
       } catch (error) {
-        console.error('Error checking session:', error);
+        console.error('[ChatLayout] Error checking session:', error);
         handleLogout();
       } finally {
+        console.log("[ChatLayout] Session check completed");
         setIsLoading(false);
       }
     };
@@ -81,22 +109,27 @@ export default function ChatLayout({
   }, []);
 
   useEffect(() => {
+    console.log("[ChatLayout] Pathname changed:", pathname);
     const channelMatch = pathname.match(/\/chat\/channel\/(.+)/)
     const userMatch = pathname.match(/\/chat\/dm\/(.+)/)
     
     if (channelMatch) {
+      console.log("[ChatLayout] Setting active channel:", channelMatch[1]);
       setActiveChannelId(channelMatch[1])
       setActiveUserId(undefined)
     } else if (userMatch) {
+      console.log("[ChatLayout] Setting active user:", userMatch[1]);
       setActiveUserId(userMatch[1])
       setActiveChannelId(undefined)
     }
   }, [pathname])
 
   const handleLogout = async () => {
+    console.log("[ChatLayout] Logging out...");
     await supabase.auth.signOut();
     setCurrentUser(null);
     setActiveWorkspace(null);
+    console.log("[ChatLayout] Redirecting to home...");
     router.push('/');
   }
 
