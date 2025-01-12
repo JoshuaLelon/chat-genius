@@ -8,46 +8,42 @@ import { useState, KeyboardEvent } from "react"
 
 interface MessageInputProps {
   channelId: string | null
-  dmId: string | null
+  userId: string | null
 }
 
-export function MessageInput({ channelId, dmId }: MessageInputProps) {
+export function MessageInput({ channelId, userId }: MessageInputProps) {
   const [message, setMessage] = useState("")
-  const { addMessage, currentUser } = useChatContext()
+  const { currentUser, addMessage } = useChatContext()
 
-  const sendMessage = () => {
-    if (message.trim()) {
-      const newMessage = {
-        id: Date.now().toString(),
-        content: message.trim(),
-        timestamp: new Date().toISOString(),
-        user: currentUser,
-        reactions: []
-      }
-      addMessage(channelId, dmId, newMessage)
-      setMessage("")
-    }
-  }
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!message.trim()) return
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      sendMessage()
+    const newMessage = {
+      id: Math.random().toString(36).substr(2, 9),
+      content: message.trim(),
+      sender: currentUser,
+      timestamp: new Date().toISOString()
     }
+
+    addMessage(channelId, userId, newMessage)
+    setMessage("")
   }
 
   return (
-    <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} className="flex items-end gap-2 border-t bg-background p-4">
-      <Textarea
-        value={message}
-        onChange={(e) => setMessage(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="Type your message..."
-        className="min-h-[80px]"
-      />
-      <Button type="submit" className="h-[80px] bg-[#b0e6ff] text-black hover:bg-[#b0e6ff]/90">
-        <SendHorizontal className="h-4 w-4" />
-      </Button>
+    <form onSubmit={handleSubmit} className="border-t p-4">
+      <div className="flex gap-2">
+        <Textarea
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          placeholder="Type a message..."
+          className="flex-1"
+        />
+        <Button type="submit" size="icon">
+          <SendHorizontal className="h-4 w-4" />
+          <span className="sr-only">Send message</span>
+        </Button>
+      </div>
     </form>
   )
 }

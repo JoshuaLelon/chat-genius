@@ -53,7 +53,7 @@ export default function DMPage({ params }: { params: { userId: string } }) {
       <div className="border-b px-4 py-2">
         <h1 className="text-xl font-semibold">{otherUser.username}</h1>
       </div>
-      <ChatArea channelId={null} dmId={params.userId} />
+      <ChatArea channelId={null} userId={params.userId} />
     </div>
   )
 }

@@ -6,65 +6,80 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Message, User } from "@/types"
 import { formatDate } from "@/utils/dateFormat"
+import { useState } from "react"
+import { Input } from "@/components/ui/input"
+import { Pencil } from "lucide-react"
 
 interface ChatMessageProps {
   message: Message
   currentUser: User
   channelId: string | null
-  dmId: string | null
+  userId: string | null
 }
 
-export function ChatMessage({ message, currentUser, channelId, dmId }: ChatMessageProps) {
+export function ChatMessage({ message, currentUser, channelId, userId }: ChatMessageProps) {
   const { updateMessage } = useChatContext()
+  const [isEditing, setIsEditing] = useState(false)
+  const [editedContent, setEditedContent] = useState(message.content)
 
-  const handleReaction = (emoji: string) => {
-    const updatedMessage = { ...message }
-    const existingReaction = updatedMessage.reactions.find(r => r.emoji === emoji)
-    
-    if (existingReaction) {
-      if (existingReaction.users.includes(currentUser.id)) {
-        existingReaction.users = existingReaction.users.filter(id => id !== currentUser.id)
-        if (existingReaction.users.length === 0) {
-          updatedMessage.reactions = updatedMessage.reactions.filter(r => r.emoji !== emoji)
-        }
-      } else {
-        existingReaction.users.push(currentUser.id)
+  const handleEdit = () => {
+    if (editedContent.trim() !== message.content) {
+      const updatedMessage = {
+        ...message,
+        content: editedContent.trim(),
+        edited: true
       }
-    } else {
-      updatedMessage.reactions.push({ emoji, users: [currentUser.id] })
+      updateMessage(channelId, userId, message.id, updatedMessage)
     }
-
-    updateMessage(channelId, dmId, message.id, updatedMessage)
+    setIsEditing(false)
   }
 
+  const isOwnMessage = message.sender.id === currentUser.id
+
   return (
-    <div className="group flex gap-3 py-4 hover:bg-muted/50">
-      <Avatar className="h-8 w-8">
-        <AvatarImage src={message.user.avatar} alt={message.user.username} />
-        <AvatarFallback>{message.user.username[0].toUpperCase()}</AvatarFallback>
+    <div className={`flex gap-3 ${isOwnMessage ? 'flex-row-reverse' : ''}`}>
+      <Avatar>
+        <AvatarImage src={message.sender.avatar} />
+        <AvatarFallback>{message.sender.username[0].toUpperCase()}</AvatarFallback>
       </Avatar>
-      <div className="grid gap-1">
+      <div className={`flex flex-col ${isOwnMessage ? 'items-end' : ''}`}>
         <div className="flex items-center gap-2">
-          <span className="font-semibold">{message.user.username}</span>
+          <span className="text-sm font-semibold">{message.sender.username}</span>
           <span className="text-xs text-muted-foreground">
-            {formatDate(message.timestamp)}
+            {new Date(message.timestamp).toLocaleTimeString()}
           </span>
         </div>
-        <p className="text-sm">{message.content}</p>
-        <div className="flex items-center gap-2">
-          {message.reactions.map((reaction, index) => (
-            <Button
-              key={index}
-              variant="ghost"
-              size="sm"
-              className="h-6 gap-1 rounded-full px-2 text-xs"
-              onClick={() => handleReaction(reaction.emoji)}
-            >
-              {reaction.emoji} {reaction.users.length}
-            </Button>
-          ))}
-          <EmojiPicker onEmojiSelect={handleReaction} />
-        </div>
+        {isEditing ? (
+          <div className="flex items-center gap-2">
+            <Input
+              value={editedContent}
+              onChange={(e) => setEditedContent(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  handleEdit()
+                }
+              }}
+              className="min-w-[200px]"
+            />
+            <Button onClick={handleEdit} size="sm">Save</Button>
+            <Button onClick={() => setIsEditing(false)} variant="ghost" size="sm">Cancel</Button>
+          </div>
+        ) : (
+          <div className="group relative">
+            <p className="text-sm">{message.content}</p>
+            {isOwnMessage && (
+              <Button
+                onClick={() => setIsEditing(true)}
+                variant="ghost"
+                size="sm"
+                className="absolute -right-12 top-0 opacity-0 group-hover:opacity-100"
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

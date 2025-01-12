@@ -15,90 +15,76 @@ export default function ChatLayout({
   const router = useRouter()
   const pathname = usePathname()
   const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [currentUser, setCurrentUser] = useState(users[0])
-  const [activeWorkspace, setActiveWorkspace] = useState<Workspace>(workspaces[0])
+  const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const [activeWorkspace, setActiveWorkspace] = useState<Workspace | null>(null)
   const [activeChannelId, setActiveChannelId] = useState<string | undefined>(undefined)
-  const [activeDmId, setActiveDmId] = useState<string | undefined>(undefined)
+  const [activeUserId, setActiveUserId] = useState<string | undefined>(undefined)
 
   useEffect(() => {
-    const userId = localStorage.getItem('currentUserId')
-    if (userId) {
-      const user = users.find(u => u.id === userId)
-      if (user) {
-        setCurrentUser(user)
-        setIsLoggedIn(true)
-        // Set the active workspace to the first workspace the user is a member of
-        const userWorkspace = workspaces.find(w => w.users.some(u => u.id === user.id))
-        if (userWorkspace) {
-          // Load persisted user statuses
-          const storedStatuses = JSON.parse(localStorage.getItem('userStatuses') || '{}')
-          const updatedWorkspace = {
-            ...userWorkspace,
-            users: userWorkspace.users.map(u => ({
-              ...u,
-              status: storedStatuses[u.id] || u.status
-            }))
-          }
-          setActiveWorkspace(updatedWorkspace)
-          // Set the first channel of the workspace as active
-          if (updatedWorkspace.channels.length > 0) {
-            setActiveChannelId(updatedWorkspace.channels[0].id)
-            router.push(`/chat/channel/${updatedWorkspace.channels[0].id}`)
-          }
-        }
-      } else {
-        handleLogout()
-      }
-    } else {
-      handleLogout()
+    // Check if user is logged in
+    const currentUserId = localStorage.getItem('currentUserId')
+    if (!currentUserId) {
+      router.push('/')
+      return
     }
-  }, [])
+
+    // Find the user
+    const user = users.find(u => u.id === currentUserId)
+    if (!user) {
+      localStorage.removeItem('currentUserId')
+      router.push('/')
+      return
+    }
+
+    setCurrentUser(user)
+    setIsLoggedIn(true)
+    setActiveWorkspace(workspaces[0])
+  }, [router])
 
   useEffect(() => {
+    // Extract channel ID from pathname
     const channelMatch = pathname.match(/\/chat\/channel\/(.+)/)
-    const dmMatch = pathname.match(/\/chat\/dm\/(.+)/)
-    
     if (channelMatch) {
       setActiveChannelId(channelMatch[1])
-      setActiveDmId(undefined)
-    } else if (dmMatch) {
-      setActiveDmId(dmMatch[1])
-      setActiveChannelId(undefined)
+      setActiveUserId(undefined)
+      return
     }
-  }, [pathname])
 
-  useEffect(() => {
-    console.log('Current Route:', pathname)
-    console.log('User Statuses:')
-    activeWorkspace.users.forEach(user => {
-      console.log(`${user.username}: ${user.status}`)
-    })
-  }, [pathname, activeWorkspace])
+    // Extract user ID from pathname
+    const userMatch = pathname.match(/\/chat\/dm\/(.+)/)
+    if (userMatch) {
+      setActiveUserId(userMatch[1])
+      setActiveChannelId(undefined)
+      return
+    }
+
+    // Reset both if we're on a different page
+    setActiveChannelId(undefined)
+    setActiveUserId(undefined)
+  }, [pathname])
 
   const handleLogout = () => {
     localStorage.removeItem('currentUserId')
     setIsLoggedIn(false)
-    router.push('/') // Redirect to the login page
+    setCurrentUser(null)
+    setActiveWorkspace(null)
+    setActiveChannelId(undefined)
+    setActiveUserId(undefined)
+    router.push('/')
   }
 
   const handleWorkspaceSelect = (workspaceId: string) => {
-    const newWorkspace = workspaces.find(w => w.id === workspaceId)
-    if (newWorkspace) {
-      setActiveWorkspace(newWorkspace)
-      // Reset active channel and DM when switching workspaces
-      setActiveChannelId(undefined)
-      setActiveDmId(undefined)
-      // Redirect to the first channel of the new workspace
-      if (newWorkspace.channels.length > 0) {
-        const firstChannelId = newWorkspace.channels[0].id
-        setActiveChannelId(firstChannelId)
-        router.push(`/chat/channel/${firstChannelId}`)
+    const workspace = workspaces.find(w => w.id === workspaceId)
+    if (workspace) {
+      setActiveWorkspace(workspace)
+      // Navigate to the first channel in the workspace
+      if (workspace.channels.length > 0) {
+        router.push(`/chat/channel/${workspace.channels[0].id}`)
       }
     }
-    console.log('Workspace Selected:', { workspaceId, newWorkspace: newWorkspace ? newWorkspace.name : null });
   }
 
-  if (!isLoggedIn) {
+  if (!isLoggedIn || !currentUser || !activeWorkspace) {
     return null // Or a loading spinner if you prefer
   }
 
@@ -107,7 +93,7 @@ export default function ChatLayout({
     currentUser: currentUser.username,
     activeWorkspace: activeWorkspace ? { id: activeWorkspace.id, name: activeWorkspace.name } : null,
     activeChannelId,
-    activeDmId
+    activeUserId
   });
 
   return (
@@ -118,7 +104,7 @@ export default function ChatLayout({
           currentUser={currentUser}
           onLogout={handleLogout}
           activeChannelId={activeChannelId}
-          activeDmId={activeDmId}
+          activeUserId={activeUserId}
           onWorkspaceSelect={handleWorkspaceSelect}
         />
         {children}

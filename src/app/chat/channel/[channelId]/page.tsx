@@ -42,7 +42,7 @@ export default function ChannelPage({ params }: { params: { channelId: string } 
       <div className="border-b px-4 py-2">
         <h1 className="text-xl font-semibold">#{channel.name}</h1>
       </div>
-      <ChatArea channelId={params.channelId} dmId={null} />
+      <ChatArea channelId={params.channelId} userId={null} />
     </div>
   )
 }

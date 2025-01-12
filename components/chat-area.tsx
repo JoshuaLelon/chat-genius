@@ -8,18 +8,18 @@ import { useEffect, useRef } from "react"
 
 interface ChatAreaProps {
   channelId: string | null
-  userId: string | null
+  dmId: string | null
 }
 
-export function ChatArea({ channelId, userId }: ChatAreaProps) {
+export function ChatArea({ channelId, dmId }: ChatAreaProps) {
   const { workspace, currentUser } = useChatContext()
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const messages = channelId
     ? workspace.channels.find(c => c.id === channelId)?.messages || []
     : workspace.directMessages.find(d => 
-        d.participants.some(p => p.id === userId) && 
-        d.participants.some(p => p.id === currentUser.id)
+        d.participants.includes(currentUser.id) && 
+        d.participants.includes(dmId!)
       )?.messages || []
 
   useEffect(() => {
@@ -39,7 +39,7 @@ export function ChatArea({ channelId, userId }: ChatAreaProps) {
                 message={message} 
                 currentUser={currentUser} 
                 channelId={channelId}
-                userId={userId}
+                dmId={dmId}
               />
             ))
           ) : (
@@ -49,7 +49,7 @@ export function ChatArea({ channelId, userId }: ChatAreaProps) {
           )}
         </div>
       </ScrollArea>
-      <MessageInput channelId={channelId} userId={userId} />
+      <MessageInput channelId={channelId} dmId={dmId} />
     </div>
   )
 }

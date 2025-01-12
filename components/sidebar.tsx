@@ -10,20 +10,13 @@ import { workspaces } from "@/lib/data"
 interface SidebarProps {
   activeWorkspace: Workspace
   activeChannelId?: string
-  activeUserId?: string
+  activeUserId?: string // Updated prop name
   currentUser: User
   onLogout: () => void
   onWorkspaceSelect: (workspaceId: string) => void
 }
 
-export function Sidebar({ 
-  activeWorkspace, 
-  activeChannelId, 
-  activeUserId, 
-  currentUser, 
-  onLogout, 
-  onWorkspaceSelect 
-}: SidebarProps) {
+export function Sidebar({ activeWorkspace, activeChannelId, activeUserId, currentUser, onLogout, onWorkspaceSelect }: SidebarProps) {
   const relevantDMs = activeWorkspace.directMessages.filter(dm => 
     dm.participants.some(p => p.id === currentUser.id)
   )
@@ -32,7 +25,7 @@ export function Sidebar({
     activeWorkspace: { id: activeWorkspace.id, name: activeWorkspace.name },
     currentUser: currentUser.username,
     activeChannelId,
-    activeUserId
+    activeUserId // Updated prop name
   });
 
   console.log('Available DM Links:', activeWorkspace.users
@@ -78,7 +71,7 @@ export function Sidebar({
                     key={user.id}
                     href={`/chat/dm/${user.id}`}
                     className={`flex items-center rounded-md px-2 py-1 hover:bg-muted ${
-                      user.id === activeUserId 
+                      user.id === activeUserId // Updated prop name
                         ? "bg-primary text-primary-foreground font-bold hover:bg-primary/90 hover:text-primary-foreground" 
                         : "hover:bg-accent hover:text-accent-foreground"
                     }`}
