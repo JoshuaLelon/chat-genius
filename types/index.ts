@@ -1,7 +1,8 @@
 export interface User {
   id: string
-  username: string
-  avatar_url?: string
+  username?: string
+  email: string
+  avatar?: string
   status: 'online' | 'offline' | 'busy'
 }
 

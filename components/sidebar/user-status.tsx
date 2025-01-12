@@ -25,12 +25,24 @@ export function UserStatus({ user, onLogout }: UserStatusProps) {
   const [status, setStatus] = useState(user.status)
   const router = useRouter()
 
+  console.log("[UserStatus] Rendering with user:", user)
+  console.log("[UserStatus] Current workspace:", workspace)
+
   useEffect(() => {
+    console.log("[UserStatus] useEffect - workspace or user.id changed")
     const currentUserInWorkspace = workspace.users.find(u => u.id === user.id)
+    console.log("[UserStatus] Current user in workspace:", currentUserInWorkspace)
     if (currentUserInWorkspace) {
       setStatus(currentUserInWorkspace.status)
     }
   }, [workspace, user.id])
+
+  // Get display name - use email if username not available
+  const displayName = user.username || user.email.split('@')[0]
+  const displayInitial = displayName[0].toUpperCase()
+
+  console.log("[UserStatus] Display name:", displayName)
+  console.log("[UserStatus] Display initial:", displayInitial)
 
   const handleStatusChange = (newStatus: 'online' | 'offline' | 'busy') => {
     setStatus(newStatus)
@@ -46,10 +58,10 @@ export function UserStatus({ user, onLogout }: UserStatusProps) {
     <div className="flex items-center gap-2 p-4">
       <Avatar>
         <AvatarImage src={user.avatar} />
-        <AvatarFallback>{user.username[0].toUpperCase()}</AvatarFallback>
+        <AvatarFallback>{displayInitial}</AvatarFallback>
       </Avatar>
       <div className="flex-1 overflow-hidden">
-        <div className="font-medium">{user.username}</div>
+        <div className="font-medium">{displayName}</div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="link" className="h-auto p-0 text-xs text-muted-foreground">

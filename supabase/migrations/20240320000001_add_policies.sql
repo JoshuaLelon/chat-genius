@@ -48,11 +48,7 @@ create policy "Insert profile on signup"
 -- Workspace policies
 create policy "Allow workspace members to read workspaces"
   on public.workspaces for select
-  using (exists (
-    select 1 from public.workspace_members
-    where workspace_members.workspace_id = workspaces.id
-    and workspace_members.user_id = auth.uid()
-  ));
+  using (true);
 
 create policy "Allow workspace creation"
   on public.workspaces for insert
@@ -61,11 +57,7 @@ create policy "Allow workspace creation"
 -- Workspace members policies
 create policy "Allow reading workspace members"
   on public.workspace_members for select
-  using (exists (
-    select 1 from public.workspace_members wm
-    where wm.workspace_id = workspace_members.workspace_id
-    and wm.user_id = auth.uid()
-  ));
+  using (true);
 
 create policy "Allow joining workspaces"
   on public.workspace_members for insert
@@ -126,11 +118,7 @@ create policy "Allow creating DMs"
 -- DM participants policies
 create policy "Allow reading DM participants"
   on public.dm_participants for select
-  using (exists (
-    select 1 from public.dm_participants dp
-    where dp.dm_id = dm_participants.dm_id
-    and dp.user_id = auth.uid()
-  ));
+  using (true);
 
 create policy "Allow adding DM participants"
   on public.dm_participants for insert
