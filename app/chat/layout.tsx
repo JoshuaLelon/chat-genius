@@ -85,8 +85,8 @@ export default function ChatLayout({
             console.log("[ChatLayout] First workspace data:", workspaceData);
             setActiveWorkspace(workspaceData);
             
-            // Set the first channel of the workspace as active
-            if (workspaceData.channels.length > 0) {
+            // Only redirect to first channel if we're at the root chat path
+            if (pathname === '/chat' && workspaceData.channels.length > 0) {
               const firstChannelId = workspaceData.channels[0].id;
               console.log("[ChatLayout] Setting first channel as active:", firstChannelId);
               setActiveChannelId(firstChannelId);
@@ -160,8 +160,8 @@ export default function ChatLayout({
       setActiveChannelId(undefined)
       setActiveUserId(undefined)
       
-      // Navigate to first channel after a small delay to ensure state updates are complete
-      if (workspaceData.channels.length > 0) {
+      // Only navigate to first channel if we're at the root chat path
+      if (pathname === '/chat' && workspaceData.channels.length > 0) {
         const firstChannelId = workspaceData.channels[0].id
         console.log("[ChatLayout] Navigating to first channel:", {
           workspaceId: workspaceData.id,
@@ -175,12 +175,6 @@ export default function ChatLayout({
           router.push(`/chat/channel/${firstChannelId}`)
         }, 0)
       }
-      
-      console.log("[ChatLayout] Workspace switch complete:", {
-        workspaceId: workspaceData.id,
-        workspaceName: workspaceData.name,
-        channelCount: workspaceData.channels.length
-      })
     } catch (error) {
       console.error('[ChatLayout] Error switching workspace:', error)
     }

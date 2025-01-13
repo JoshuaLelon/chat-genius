@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { Message, Reaction, User, Channel, DirectMessage, Workspace } from '@/types'
+import { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -82,6 +83,18 @@ export async function getWorkspace(workspaceId: string): Promise<Workspace> {
           email,
           avatar_url,
           status
+        ),
+        reactions(
+          message_id,
+          user_id,
+          emoji,
+          created_at,
+          reactor:profiles!reactions_user_id_fkey(
+            id,
+            email,
+            avatar_url,
+            status
+          )
         )
       `)
       .eq('channel_id', channel.id)
@@ -92,36 +105,9 @@ export async function getWorkspace(workspaceId: string): Promise<Workspace> {
       throw messagesError;
     }
 
-    // Get reactions for messages
-    console.log("[Supabase] Getting reactions for messages in channel:", channel.id);
-    const messagesWithReactions = await Promise.all(messages.map(async message => {
-      const { data: reactions, error: reactionsError } = await supabase
-        .from('reactions')
-        .select(`
-          *,
-          reactor:profiles!reactions_user_id_fkey(
-            id,
-            email,
-            avatar_url,
-            status
-          )
-        `)
-        .eq('message_id', message.id);
-
-      if (reactionsError) {
-        console.error("[Supabase] Error fetching reactions for message:", message.id, reactionsError);
-        throw reactionsError;
-      }
-
-      return {
-        ...message,
-        reactions: reactions || []
-      };
-    }));
-
     return {
       ...channel,
-      messages: messagesWithReactions || []
+      messages: messages || []
     };
   });
 
@@ -176,6 +162,18 @@ export async function getWorkspace(workspaceId: string): Promise<Workspace> {
           email,
           avatar_url,
           status
+        ),
+        reactions(
+          message_id,
+          user_id,
+          emoji,
+          created_at,
+          reactor:profiles!reactions_user_id_fkey(
+            id,
+            email,
+            avatar_url,
+            status
+          )
         )
       `)
       .eq('dm_id', dm.id)
@@ -186,37 +184,10 @@ export async function getWorkspace(workspaceId: string): Promise<Workspace> {
       throw messagesError;
     }
 
-    // Get reactions for messages
-    console.log("[Supabase] Getting reactions for messages in DM:", dm.id);
-    const messagesWithReactions = await Promise.all(messages.map(async message => {
-      const { data: reactions, error: reactionsError } = await supabase
-        .from('reactions')
-        .select(`
-          *,
-          reactor:profiles!reactions_user_id_fkey(
-            id,
-            email,
-            avatar_url,
-            status
-          )
-        `)
-        .eq('message_id', message.id);
-
-      if (reactionsError) {
-        console.error("[Supabase] Error fetching reactions for message:", message.id, reactionsError);
-        throw reactionsError;
-      }
-
-      return {
-        ...message,
-        reactions: reactions || []
-      };
-    }));
-
     return {
       ...dm,
-      participants: participants?.map(p => p.participant) || [],
-      messages: messagesWithReactions || []
+      participants: participants.map(p => p.participant),
+      messages: messages || []
     };
   });
 
@@ -244,32 +215,49 @@ export async function createMessage({ content, channel_id, dm_id, user_id }: {
 }) {
   console.log("[Supabase] Creating message:", { content, channel_id, dm_id, user_id });
   
-  const { data, error } = await supabase
-    .from('messages')
-    .insert({
-      content,
-      channel_id,
-      dm_id,
-      user_id
-    })
-    .select(`
-      *,
-      sender:profiles!messages_user_id_fkey(
-        id,
-        email,
-        avatar_url,
-        status
-      )
-    `)
-    .single()
+  try {
+    const { data, error } = await supabase
+      .from('messages')
+      .insert({
+        content,
+        channel_id,
+        dm_id,
+        user_id
+      })
+      .select(`
+        *,
+        sender:profiles!messages_user_id_fkey(
+          id,
+          email,
+          avatar_url,
+          status
+        ),
+        reactions(
+          message_id,
+          user_id,
+          emoji,
+          created_at,
+          reactor:profiles!reactions_user_id_fkey(
+            id,
+            email,
+            avatar_url,
+            status
+          )
+        )
+      `)
+      .single()
   
-  console.log("[Supabase] Create message result:", { data, error });
-  if (error) {
-    console.error("[Supabase] Error creating message:", error);
+    console.log("[Supabase] Create message result:", { data, error });
+    if (error) {
+      console.error("[Supabase] Error creating message:", error);
+      throw error;
+    }
+    console.log("[Supabase] Successfully created message:", data);
+    return data;
+  } catch (error) {
+    console.error("[Supabase] Error in createMessage:", error);
     throw error;
   }
-  console.log("[Supabase] Successfully created message");
-  return data;
 }
 
 // User functions
@@ -397,49 +385,67 @@ export function unsubscribeFromUserStatus(userId: string) {
 export async function addReaction(messageId: string, emoji: string, userId: string) {
   console.log("[Supabase] Adding reaction:", { messageId, emoji, userId });
   
-  const { data, error } = await supabase
-    .from('reactions')
-    .insert({
-      message_id: messageId,
-      emoji,
-      user_id: userId
-    })
-    .select(`
-      *,
-      reactor:profiles!reactions_user_id_fkey(
-        id,
-        email,
-        avatar_url,
-        status
-      )
-    `)
-    .single()
+  try {
+    // First check if reaction already exists
+    const { data: existingReaction } = await supabase
+      .from('reactions')
+      .select('*')
+      .match({
+        message_id: messageId,
+        emoji,
+        user_id: userId
+      })
+      .single();
 
-  if (error) {
-    console.error("[Supabase] Error adding reaction:", error);
+    if (existingReaction) {
+      console.log("[Supabase] Reaction already exists:", existingReaction);
+      return existingReaction;
+    }
+
+    const { data, error } = await supabase
+      .from('reactions')
+      .insert({
+        message_id: messageId,
+        emoji,
+        user_id: userId
+      })
+      .select(`
+        *,
+        reactor:profiles!reactions_user_id_fkey(
+          id,
+          email,
+          avatar_url,
+          status
+        )
+      `)
+      .single()
+
+    if (error) {
+      console.error("[Supabase] Error adding reaction:", error);
+      throw error;
+    }
+    console.log("[Supabase] Successfully added reaction:", data);
+    return data;
+  } catch (error) {
+    console.error("[Supabase] Error in addReaction:", error);
     throw error;
   }
-  console.log("[Supabase] Successfully added reaction:", data);
-  return data;
 }
 
-export async function removeReaction(messageId: string, emoji: string, userId: string) {
+export function removeReaction(messageId: string, emoji: string, userId: string) {
   console.log("[Supabase] Removing reaction:", { messageId, emoji, userId });
-  
-  const { error } = await supabase
+  return supabase
     .from('reactions')
     .delete()
     .match({
       message_id: messageId,
-      emoji,
+      emoji: emoji,
       user_id: userId
     })
-
-  if (error) {
-    console.error("[Supabase] Error removing reaction:", error);
-    throw error;
-  }
-  console.log("[Supabase] Successfully removed reaction");
+    .then(result => {
+      console.log("[Supabase] Remove reaction result:", result);
+      return result;
+    });
 }
 
 export type ReactionSubscriptionCallback = (payload: {
@@ -465,35 +471,55 @@ export function subscribeToMessageReactions(
       },
       async (payload: any) => {
         console.log("[Supabase] Received reaction change:", payload);
-        // Fetch user data for the reaction
-        if (payload.new) {
-          console.log("[Supabase] Fetching reactor data for new reaction");
-          const { data: userData } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', payload.new.user_id)
-            .single()
+        try {
+          // Fetch user data for the reaction
+          if (payload.new) {
+            console.log("[Supabase] Fetching reactor data for new reaction");
+            const { data: userData, error: userError } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', payload.new.user_id)
+              .single()
+            
+            if (userError) {
+              console.error("[Supabase] Error fetching reactor data for new reaction:", userError);
+              return;
+            }
+            
+            payload.new.reactor = userData
+            console.log("[Supabase] Added reactor data to new reaction:", payload.new);
+          }
           
-          payload.new.reactor = userData
-        }
-        
-        if (payload.old) {
-          console.log("[Supabase] Fetching reactor data for old reaction");
-          const { data: userData } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', payload.old.user_id)
-            .single()
-          
-          payload.old.reactor = userData
-        }
+          if (payload.old) {
+            console.log("[Supabase] Fetching reactor data for old reaction");
+            const { data: userData, error: userError } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', payload.old.user_id)
+              .single()
+            
+            if (userError) {
+              console.error("[Supabase] Error fetching reactor data for old reaction:", userError);
+              return;
+            }
+            
+            payload.old.reactor = userData
+            console.log("[Supabase] Added reactor data to old reaction:", payload.old);
+          }
 
-        console.log("[Supabase] Invoking reaction subscription callback");
-        callback({
-          new: payload.new,
-          old: payload.old,
-          eventType: payload.eventType
-        })
+          console.log("[Supabase] Invoking reaction subscription callback with payload:", {
+            new: payload.new,
+            old: payload.old,
+            eventType: payload.eventType
+          });
+          callback({
+            new: payload.new,
+            old: payload.old,
+            eventType: payload.eventType
+          })
+        } catch (error) {
+          console.error("[Supabase] Error in reaction subscription handler:", error);
+        }
       }
     )
     .subscribe()
@@ -502,4 +528,168 @@ export function subscribeToMessageReactions(
 export function unsubscribeFromMessageReactions(messageId: string) {
   console.log("[Supabase] Unsubscribing from message reactions:", messageId);
   return supabase.channel(`reactions:${messageId}`).unsubscribe()
+}
+
+export async function getChannel(channelId: string) {
+  try {
+    console.log("[Supabase] Getting channel:", channelId);
+    const { data: channel, error: channelError } = await supabase
+      .from('channels')
+      .select('*')
+      .eq('id', channelId)
+      .single();
+
+    if (channelError) {
+      console.error("[Supabase] Error fetching channel:", channelId, channelError);
+      throw channelError;
+    }
+
+    // Get messages
+    console.log("[Supabase] Fetching messages for channel:", channel.id);
+    const { data: messages, error: messagesError } = await supabase
+      .from('messages')
+      .select(`
+        *,
+        sender:profiles!messages_user_id_fkey(
+          id,
+          email,
+          avatar_url,
+          status
+        ),
+        reactions(
+          message_id,
+          user_id,
+          emoji,
+          created_at,
+          reactor:profiles!reactions_user_id_fkey(
+            id,
+            email,
+            avatar_url,
+            status
+          )
+        )
+      `)
+      .eq('channel_id', channel.id)
+      .order('created_at', { ascending: false });
+
+    if (messagesError) {
+      console.error("[Supabase] Error fetching messages for channel:", channel.id, messagesError);
+      throw messagesError;
+    }
+
+    return {
+      ...channel,
+      messages: messages || []
+    };
+  } catch (error) {
+    console.error("[Supabase] Error in getChannel:", error);
+    throw error;
+  }
+}
+
+export async function getChannelMessages(channelId: string) {
+  try {
+    console.log("[Supabase] Fetching messages for channel:", channelId);
+    const { data: messages, error: messagesError } = await supabase
+      .from('messages')
+      .select(`
+        *,
+        sender:profiles!messages_user_id_fkey(
+          id,
+          email,
+          avatar_url,
+          status
+        ),
+        reactions(
+          message_id,
+          user_id,
+          emoji,
+          created_at,
+          reactor:profiles!reactions_user_id_fkey(
+            id,
+            email,
+            avatar_url,
+            status
+          )
+        )
+      `)
+      .eq('channel_id', channelId)
+      .order('created_at', { ascending: false });
+
+    if (messagesError) {
+      console.error("[Supabase] Error fetching messages for channel:", channelId, messagesError);
+      throw messagesError;
+    }
+
+    return messages || [];
+  } catch (error) {
+    console.error("[Supabase] Error in getChannelMessages:", error);
+    throw error;
+  }
+}
+
+export async function getUser(userId: string) {
+  console.log("[Supabase] Getting user:", userId);
+  
+  const { data: user, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .single();
+  
+  if (error) {
+    console.error("[Supabase] Error getting user:", error);
+    throw error;
+  }
+  
+  console.log("[Supabase] Successfully got user:", user);
+  return user;
+}
+
+export function subscribeToWorkspace(
+  workspaceId: string,
+  onUpdate: (type: 'messages' | 'reactions' | 'status', data: any) => void
+) {
+  console.log("[Supabase] Setting up workspace subscription for:", workspaceId);
+  return supabase
+    .channel(`workspace:${workspaceId}`)
+    .on(
+      'postgres_changes',
+      { 
+        event: 'DELETE',
+        schema: 'public',
+        table: 'reactions'
+      },
+      async (payload: RealtimePostgresChangesPayload<Reaction>) => {
+        console.log("[Supabase] Reaction DELETE received:", payload);
+        onUpdate('reactions', payload);
+      }
+    )
+    .on(
+      'postgres_changes',
+      { 
+        event: 'INSERT',
+        schema: 'public',
+        table: 'reactions'
+      },
+      async (payload: RealtimePostgresChangesPayload<Reaction>) => {
+        console.log("[Supabase] Reaction INSERT received:", payload);
+        const reaction = payload.new as Reaction;
+        if (reaction) {
+          const { data: userData, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', reaction.user_id)
+            .single();
+            
+          if (error) {
+            console.error("[Supabase] Error fetching reactor data:", error);
+          } else {
+            (reaction as any).reactor = userData;
+          }
+        }
+        onUpdate('reactions', payload);
+      }
+    )
+    .subscribe();
 } 

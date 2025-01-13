@@ -1,8 +1,8 @@
 "use client"
 
-import { Channel, DirectMessage, Message, User, Workspace } from "@/types"
+import { Channel, DirectMessage, Message, Reaction, User, Workspace } from "@/types"
 import { createContext, useContext, useState, useEffect } from "react"
-import { supabase, getWorkspace, createMessage, updateUserStatus } from "@/lib/supabase"
+import { supabase, getWorkspace, createMessage, updateUserStatus, getUser, subscribeToWorkspace } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
 
 interface ChatContextType {
@@ -24,7 +24,24 @@ export function ChatProvider({ children, initialWorkspace, currentUser }: { chil
     channels: initialWorkspace.channels.map(c => ({ id: c.id, name: c.name }))
   })
 
-  const [workspace, setWorkspace] = useState(initialWorkspace)
+  // Sort messages in initial workspace
+  const sortedWorkspace = {
+    ...initialWorkspace,
+    channels: initialWorkspace.channels.map(channel => ({
+      ...channel,
+      messages: [...channel.messages].sort((a, b) => 
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      )
+    })),
+    directMessages: initialWorkspace.directMessages.map(dm => ({
+      ...dm,
+      messages: [...dm.messages].sort((a, b) => 
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      )
+    }))
+  };
+
+  const [workspace, setWorkspace] = useState<Workspace>(sortedWorkspace)
   const router = useRouter()
 
   console.log("[ChatProvider] Initializing with:", {
@@ -35,129 +52,326 @@ export function ChatProvider({ children, initialWorkspace, currentUser }: { chil
     dmCount: initialWorkspace.directMessages.length
   });
 
-  // Set up real-time subscriptions
+  // Track current user's presence
   useEffect(() => {
-    console.log("[ChatProvider] Setting up subscriptions for workspace:", workspace.id);
+    const updateStatus = async () => {
+      console.log("[ChatProvider] Setting initial user status to online:", {
+        userId: currentUser.id,
+        email: currentUser.email
+      });
+      await updateUserStatus(currentUser.id, 'online');
+    };
+    updateStatus();
+  }, [currentUser.id]);
 
-    // Subscribe to workspace changes
-    const workspaceSubscription = supabase
-      .channel('workspace-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'messages',
-          filter: `channel_id=in.(${workspace.channels.map(c => c.id).join(',')})`,
-        },
-        async (payload: any) => {
-          console.log("[ChatProvider] Received workspace change:", payload);
-          // Refresh workspace data
-          const updatedWorkspace = await getWorkspace(workspace.id)
-          console.log("[ChatProvider] Updated workspace data:", {
-            channelCount: updatedWorkspace.channels.length,
-            dmCount: updatedWorkspace.directMessages.length
-          });
-          setWorkspace(updatedWorkspace)
-        }
-      )
-      .subscribe()
-
-    // Track current user's presence
-    const trackPresence = async () => {
-      console.log("[ChatProvider] Setting initial user status to online");
-      await updateUserStatus(currentUser.id, 'online')
-      window.addEventListener('beforeunload', () => {
-        console.log("[ChatProvider] Setting user status to offline before unload");
-        updateUserStatus(currentUser.id, 'offline')
-      })
-    }
-    trackPresence()
-
-    return () => {
-      console.log("[ChatProvider] Cleaning up subscriptions");
-      workspaceSubscription.unsubscribe()
-      updateUserStatus(currentUser.id, 'offline')
-    }
-  }, [workspace.id, currentUser.id])
+  // Handle beforeunload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      console.log("[ChatProvider] Setting user status to offline before unload:", {
+        userId: currentUser.id,
+        email: currentUser.email
+      });
+      updateUserStatus(currentUser.id, 'offline');
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [currentUser.id]);
 
   useEffect(() => {
     console.log("[ChatContext] Workspace changed:", {
-      workspaceId: initialWorkspace.id,
-      workspaceName: initialWorkspace.name,
-      channelCount: initialWorkspace.channels.length,
-      channels: initialWorkspace.channels.map(c => ({ id: c.id, name: c.name }))
-    })
-    setWorkspace(initialWorkspace)
-  }, [initialWorkspace])
+      workspaceId: workspace.id,
+      workspaceName: workspace.name,
+      channelCount: workspace.channels.length,
+      channels: workspace.channels.map(c => ({
+        id: c.id,
+        name: c.name,
+        messageCount: c.messages.length,
+        reactionCount: c.messages.reduce((acc, m) => acc + (m.reactions?.length || 0), 0)
+      })),
+      dmCount: workspace.directMessages.length,
+      dms: workspace.directMessages.map(dm => ({
+        id: dm.id,
+        participants: dm.participants.map(p => p.email),
+        messageCount: dm.messages.length,
+        reactionCount: dm.messages.reduce((acc, m) => acc + (m.reactions?.length || 0), 0)
+      }))
+    });
+    setWorkspace(workspace)
+  }, [workspace])
+
+  useEffect(() => {
+    if (!workspace?.id) return;
+
+    const subscription = subscribeToWorkspace(workspace.id, (type, payload) => {
+      console.log("[ChatContext] Received subscription update:", { type, payload });
+      
+      setWorkspace(current => {
+        const updated = structuredClone(current);
+        
+        if (type === 'messages') {
+          const { new: message, old: oldMessage, eventType } = payload;
+          console.log("[ChatContext] Processing message update:", { 
+            eventType, 
+            messageId: message?.id,
+            messageContent: message?.content,
+            channelId: message?.channel_id,
+            dmId: message?.dm_id
+          });
+          
+          // Update channels
+          updated.channels = updated.channels.map(channel => {
+            if (channel.id === message?.channel_id) {
+              if (eventType === 'INSERT') {
+                // Find any temporary message with matching content and user
+                const tempMessage = channel.messages.find(m => 
+                  m.id.startsWith('temp-') && 
+                  m.content === message.content &&
+                  m.user_id === message.user_id
+                );
+                
+                if (tempMessage) {
+                  // Replace temp message with real one
+                  channel.messages = channel.messages.map(m =>
+                    m.id === tempMessage.id ? message : m
+                  );
+                } else {
+                  // If no temp message found, add the new one
+                  channel.messages = [...channel.messages, message];
+                }
+                
+                // Sort messages by timestamp
+                channel.messages = channel.messages
+                  .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+                
+                console.log("[ChatContext] Updated channel messages:", {
+                  channelId: channel.id,
+                  messageCount: channel.messages.length,
+                  messages: channel.messages.map(m => ({
+                    id: m.id,
+                    content: m.content,
+                    isTemp: m.id.startsWith('temp-')
+                  }))
+                });
+              } else if (eventType === 'DELETE') {
+                channel.messages = channel.messages.filter(m => m.id !== oldMessage.id);
+              } else if (eventType === 'UPDATE') {
+                channel.messages = channel.messages.map(m => 
+                  m.id === message.id ? message : m
+                );
+              }
+            }
+            return channel;
+          });
+          
+          // Update DMs similarly
+          updated.directMessages = updated.directMessages.map(dm => {
+            if (dm.id === message?.dm_id) {
+              if (eventType === 'INSERT') {
+                // Find any temporary message with matching content and user
+                const tempMessage = dm.messages.find(m => 
+                  m.id.startsWith('temp-') && 
+                  m.content === message.content &&
+                  m.user_id === message.user_id
+                );
+                
+                if (tempMessage) {
+                  // Replace temp message with real one
+                  dm.messages = dm.messages.map(m =>
+                    m.id === tempMessage.id ? message : m
+                  );
+                } else {
+                  // If no temp message found, add the new one
+                  dm.messages = [...dm.messages, message];
+                }
+                
+                // Sort messages by timestamp
+                dm.messages = dm.messages
+                  .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+                
+                console.log("[ChatContext] Updated DM messages:", {
+                  dmId: dm.id,
+                  messageCount: dm.messages.length,
+                  messages: dm.messages.map(m => ({
+                    id: m.id,
+                    content: m.content,
+                    isTemp: m.id.startsWith('temp-')
+                  }))
+                });
+              } else if (eventType === 'DELETE') {
+                dm.messages = dm.messages.filter(m => m.id !== oldMessage.id);
+              } else if (eventType === 'UPDATE') {
+                dm.messages = dm.messages.map(m => 
+                  m.id === message.id ? message : m
+                );
+              }
+            }
+            return dm;
+          });
+        }
+        
+        if (type === 'reactions') {
+          const { new: reaction, old: oldReaction, eventType } = payload;
+          console.log("[ChatContext] Processing reaction change:", {
+            eventType,
+            reaction,
+            oldReaction
+          });
+          
+          // Update message reactions in both channels and DMs
+          const updateMessages = (messages: Message[]) => 
+            messages.map(message => {
+              if (message.id === reaction?.message_id) {
+                console.log("[ChatContext] Found message for reaction:", {
+                  messageId: message.id,
+                  currentReactions: message.reactions
+                });
+                
+                if (eventType === 'INSERT') {
+                  console.log("[ChatContext] Adding new reaction");
+                  message.reactions = [...(message.reactions || []), reaction];
+                } else if (eventType === 'DELETE' && oldReaction) {
+                  console.log("[ChatContext] Removing reaction:", {
+                    oldReaction,
+                    beforeCount: message.reactions?.length
+                  });
+                  message.reactions = message.reactions?.filter(r => r.id !== oldReaction.id);
+                  console.log("[ChatContext] After removing reaction:", {
+                    afterCount: message.reactions?.length,
+                    remainingReactions: message.reactions
+                  });
+                }
+                
+                console.log("[ChatContext] Updated message reactions:", message.reactions);
+              }
+              return message;
+            });
+            
+          updated.channels = updated.channels.map(channel => ({
+            ...channel,
+            messages: updateMessages(channel.messages)
+          }));
+          
+          updated.directMessages = updated.directMessages.map(dm => ({
+            ...dm,
+            messages: updateMessages(dm.messages)
+          }));
+        }
+        
+        return updated;
+      });
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [workspace?.id]);
 
   const addMessage = async (channelId: string | null, dmUserId: string | null, content: string) => {
     if (!content.trim()) {
-      console.log("[ChatProvider] Ignoring empty message");
+      console.log("[ChatContext] Ignoring empty message");
       return
     }
 
-    console.log("[ChatProvider] Adding message:", {
+    console.log("[ChatContext] Adding message:", {
       channelId,
       dmUserId,
       content: content.trim(),
-      currentUser: currentUser.email
+      currentUser: currentUser.email,
+      workspaceId: workspace.id
     });
 
     try {
+      // Create optimistic message
+      const optimisticMessage = {
+        id: `temp-${Date.now()}`,
+        content: content.trim(),
+        user_id: currentUser.id,
+        created_at: new Date().toISOString(),
+        sender: currentUser,
+        reactions: [],
+        channel_id: channelId || undefined,
+        dm_id: undefined
+      };
+
+      // Optimistically update UI
+      setWorkspace(prev => {
+        const updated = { ...prev };
+        if (channelId) {
+          const channelIndex = updated.channels.findIndex(c => c.id === channelId);
+          if (channelIndex !== -1) {
+            updated.channels[channelIndex] = {
+              ...updated.channels[channelIndex],
+              messages: [...updated.channels[channelIndex].messages, optimisticMessage]
+            };
+          }
+        } else if (dmUserId) {
+          const dmIndex = updated.directMessages.findIndex(dm =>
+            dm.participants.some(p => p.id === dmUserId) &&
+            dm.participants.some(p => p.id === currentUser.id)
+          );
+
+          if (dmIndex !== -1) {
+            updated.directMessages[dmIndex] = {
+              ...updated.directMessages[dmIndex],
+              messages: [...updated.directMessages[dmIndex].messages, optimisticMessage]
+            };
+          }
+        }
+        return updated;
+      });
+
+      // Send to server
       if (channelId) {
         await createMessage({
           content: content.trim(),
           channel_id: channelId,
           user_id: currentUser.id
-        })
-        console.log("[ChatProvider] Message added to channel:", channelId);
+        });
       } else if (dmUserId) {
         // Find or create DM
         const existingDM = workspace.directMessages.find(dm =>
           dm.participants.some(p => p.id === dmUserId) &&
           dm.participants.some(p => p.id === currentUser.id)
-        )
-
-        console.log("[ChatProvider] Found existing DM:", {
-          exists: !!existingDM,
-          dmId: existingDM?.id
-        });
+        );
 
         if (existingDM) {
           await createMessage({
             content: content.trim(),
             dm_id: existingDM.id,
             user_id: currentUser.id
-          })
-          console.log("[ChatProvider] Message added to existing DM:", existingDM.id);
+          });
         } else {
-          console.log("[ChatProvider] Creating new DM");
-          // Create new DM
-          const { data: dm } = await supabase
+          // Create new DM logic remains the same
+          const { data: dm, error: dmError } = await supabase
             .from('direct_messages')
             .insert({ workspace_id: workspace.id })
             .select()
-            .single()
+            .single();
 
-          await supabase.from('dm_participants').insert([
+          if (dmError) throw dmError;
+
+          const { error: participantError } = await supabase.from('dm_participants').insert([
             { dm_id: dm.id, user_id: currentUser.id },
             { dm_id: dm.id, user_id: dmUserId }
-          ])
+          ]);
+
+          if (participantError) throw participantError;
 
           await createMessage({
             content: content.trim(),
             dm_id: dm.id,
             user_id: currentUser.id
-          })
-          console.log("[ChatProvider] Message added to new DM:", dm.id);
+          });
         }
       }
     } catch (error) {
-      console.error('[ChatProvider] Error sending message:', error)
-      throw error
+      console.error('[ChatContext] Error sending message:', error);
+      // Revert optimistic update on error
+      const updatedWorkspace = await getWorkspace(workspace.id);
+      setWorkspace(updatedWorkspace);
+      throw error;
     }
-  }
+  };
 
   const updateStatus = async (status: 'online' | 'offline' | 'busy') => {
     try {

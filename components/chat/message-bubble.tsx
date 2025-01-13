@@ -1,11 +1,20 @@
 "use client"
 
-import { Message, User } from "@/types"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { formatDate } from "@/utils/dateFormat"
 import { Button } from "@/components/ui/button"
 import { addReaction, removeReaction } from "@/lib/supabase"
-import { useState } from "react"
+import { useState, useMemo, useCallback } from "react"
+import type { Message, Reaction, User } from "../../types"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { formatDate } from "@/utils/dateFormat"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { toast } from "react-hot-toast"
+import { supabase } from "@/lib/supabase"
+
+const EMOJI_LIST = ['👍', '❤️', '😂', '🎉', '🤔', '😢', '🔥', '👏', '✨', '🙌']
 
 interface MessageBubbleProps {
   message: Message
@@ -14,6 +23,8 @@ interface MessageBubbleProps {
 
 export function MessageBubble({ message, currentUser }: MessageBubbleProps) {
   const [isAddingReaction, setIsAddingReaction] = useState(false)
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [originalReactions, setOriginalReactions] = useState(message.reactions)
 
   console.log("[MessageBubble] Rendering message:", {
     messageId: message.id,
@@ -21,7 +32,8 @@ export function MessageBubble({ message, currentUser }: MessageBubbleProps) {
     userId: message.user_id,
     sender: message.sender,
     timestamp: message.created_at,
-    reactionCount: message.reactions.length
+    reactionCount: message.reactions?.length || 0,
+    reactions: message.reactions
   });
 
   // Get the sender's display name from the email (before the @)
@@ -29,50 +41,100 @@ export function MessageBubble({ message, currentUser }: MessageBubbleProps) {
   const initial = displayName[0].toUpperCase()
 
   // Group reactions by emoji
-  const reactionGroups = message.reactions.reduce((groups, reaction) => {
-    const emoji = reaction.emoji
-    if (!groups[emoji]) {
-      groups[emoji] = []
-    }
-    groups[emoji].push(reaction)
-    return groups
-  }, {} as Record<string, typeof message.reactions>)
+  const groupedReactions = useMemo(() => {
+    console.log("[MessageBubble] Processing reactions for message:", {
+      messageId: message.id,
+      reactionCount: message.reactions?.length || 0
+    });
+    
+    const groups: { [key: string]: Reaction[] } = {};
+    message.reactions?.forEach(reaction => {
+      console.log("[MessageBubble] Processing reaction:", {
+        emoji: reaction.emoji,
+        reactor: reaction.reactor?.email,
+        message_id: reaction.message_id
+      });
+      if (!groups[reaction.emoji]) {
+        groups[reaction.emoji] = [];
+      }
+      groups[reaction.emoji].push(reaction);
+    });
+    
+    console.log("[MessageBubble] Grouped reactions:", {
+      messageId: message.id,
+      groups: Object.keys(groups).reduce((acc, emoji) => ({
+        ...acc,
+        [emoji]: groups[emoji].length
+      }), {})
+    });
+    
+    return groups;
+  }, [message.reactions, message.id]);
 
-  const handleAddReaction = async (emoji: string) => {
-    console.log("[MessageBubble] Adding reaction:", {
+  const hasUserReacted = useCallback((emoji: string) => {
+    const hasReacted = message.reactions?.some(
+      r => r.emoji === emoji && r.user_id === currentUser.id
+    ) ?? false;
+   
+    console.log("[MessageBubble] Checking if user reacted:", {
       messageId: message.id,
       emoji,
-      userId: currentUser.id
+      userId: currentUser.id,
+      hasReacted
     });
+    
+    return hasReacted;
+  }, [message.reactions, currentUser.id, message.id]);
 
-    try {
-      setIsAddingReaction(true)
-      await addReaction(message.id, emoji, currentUser.id)
-      console.log("[MessageBubble] Reaction added successfully");
-    } catch (error) {
-      console.error("[MessageBubble] Error adding reaction:", error)
-    } finally {
-      setIsAddingReaction(false)
+  const handleReaction = async (emoji: string) => {
+    // Improved temporary message handling
+    if (message.id.startsWith('temp-')) {
+      toast.warning('Cannot react to messages that are still sending');
+      return;
     }
-  }
 
-  const handleRemoveReaction = async (emoji: string) => {
-    console.log("[MessageBubble] Removing reaction:", {
-      messageId: message.id,
-      emoji,
-      userId: currentUser.id
-    });
-
+    if (isUpdating) return;
+    setIsUpdating(true);
+    
     try {
-      setIsAddingReaction(true)
-      await removeReaction(message.id, emoji, currentUser.id)
-      console.log("[MessageBubble] Reaction removed successfully");
+      const hasReacted = message.reactions?.some(r => 
+        r.emoji === emoji && r.user_id === currentUser.id
+      );
+      
+      // Store original reactions before optimistic update
+      setOriginalReactions(message.reactions || []);
+      
+      // Create optimistic reaction
+      const optimisticReaction: Reaction = {
+        id: `temp-${Date.now()}`,
+        message_id: message.id,
+        user_id: currentUser.id,
+        emoji,
+        reactor: currentUser
+      };
+
+      // Optimistically update UI
+      const updatedReactions = hasReacted
+        ? message.reactions?.filter(r => !(r.emoji === emoji && r.user_id === currentUser.id))
+        : [...(message.reactions || []), optimisticReaction];
+
+      message.reactions = updatedReactions;
+
+      // Send to server
+      if (hasReacted) {
+        await removeReaction(message.id, emoji, currentUser.id);
+      } else {
+        await addReaction(message.id, emoji, currentUser.id);
+      }
     } catch (error) {
-      console.error("[MessageBubble] Error removing reaction:", error)
+      console.error('Error updating reaction:', error);
+      toast.error('Failed to update reaction');
+      // Revert using stored original reactions
+      message.reactions = originalReactions;
     } finally {
-      setIsAddingReaction(false)
+      setIsUpdating(false);
     }
-  }
+  };
 
   return (
     <div className="flex items-start gap-4">
@@ -89,15 +151,15 @@ export function MessageBubble({ message, currentUser }: MessageBubbleProps) {
         </div>
         <p className="whitespace-pre-wrap">{message.content}</p>
         <div className="flex flex-wrap gap-2 mt-2">
-          {Object.entries(reactionGroups).map(([emoji, reactions]) => {
-            const hasReacted = reactions.some(r => r.user_id === currentUser.id)
+          {Object.entries(groupedReactions).map(([emoji, reactions]) => {
+            const hasReacted = hasUserReacted(emoji)
             return (
               <Button
                 key={emoji}
                 variant="outline"
                 size="sm"
                 className="gap-1 px-2 py-0 h-6"
-                onClick={() => hasReacted ? handleRemoveReaction(emoji) : handleAddReaction(emoji)}
+                onClick={() => handleReaction(emoji)}
                 disabled={isAddingReaction}
               >
                 <span>{emoji}</span>
@@ -105,15 +167,34 @@ export function MessageBubble({ message, currentUser }: MessageBubbleProps) {
               </Button>
             )
           })}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="px-2 py-0 h-6"
-            onClick={() => handleAddReaction('👍')}
-            disabled={isAddingReaction}
-          >
-            +
-          </Button>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1 px-2 py-0 h-6"
+                disabled={isAddingReaction}
+              >
+                <span>+</span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-2">
+              <div className="flex flex-wrap gap-2">
+                {EMOJI_LIST.map(emoji => (
+                  <Button
+                    key={emoji}
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1 px-2 py-0 h-6"
+                    onClick={() => handleReaction(emoji)}
+                    disabled={isAddingReaction}
+                  >
+                    {emoji}
+                  </Button>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
     </div>

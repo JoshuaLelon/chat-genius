@@ -91,8 +91,14 @@ export function ChatArea({ channelId, dmUserId }: ChatAreaProps) {
   if (!conversationName) {
     console.log("[ChatArea] Conversation not found");
     return (
-      <div className="flex items-center justify-center h-full">
-        <p className="text-muted-foreground">Conversation not found</p>
+      <div className="flex flex-col h-full">
+        <div className="flex-1 p-4 space-y-4 overflow-y-auto">
+          <div className="flex items-center justify-center h-full">
+            <p className="text-muted-foreground">Start a new conversation</p>
+          </div>
+          <div ref={messagesEndRef} />
+        </div>
+        <MessageInput onSendMessage={handleSendMessage} />
       </div>
     )
   }

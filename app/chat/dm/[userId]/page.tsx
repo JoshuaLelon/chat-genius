@@ -100,7 +100,7 @@ export default function DMPage({ params }: { params: { userId: string } }) {
           }`} />
         </div>
       </div>
-      <ChatArea channelId={null} dmId={params.userId} />
+      <ChatArea dmUserId={params.userId} />
     </div>
   )
 }
