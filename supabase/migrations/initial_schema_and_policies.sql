@@ -48,7 +48,7 @@ begin
     vectorized_messages.metadata,
     1 - (vectorized_messages.embedding <=> query_embedding) as similarity
   from vectorized_messages
-  where metadata @> filter
+  where vectorized_messages.metadata @> filter
   order by vectorized_messages.embedding <=> query_embedding
   limit match_count;
 end;
