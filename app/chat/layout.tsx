@@ -175,7 +175,7 @@ export default function ChatLayout({
           }
         }
       }
-
+      
       // Update workspace state
       setActiveWorkspace(workspaceData)
       
