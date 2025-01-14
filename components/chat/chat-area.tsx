@@ -98,7 +98,7 @@ export function ChatArea({ channelId, dmUserId }: ChatAreaProps) {
           </div>
           <div ref={messagesEndRef} />
         </div>
-        <MessageInput onSendMessage={handleSendMessage} />
+        <MessageInput onSendMessage={handleSendMessage} dmUserId={dmUserId} />
       </div>
     )
   }
@@ -115,7 +115,7 @@ export function ChatArea({ channelId, dmUserId }: ChatAreaProps) {
         ))}
         <div ref={messagesEndRef} />
       </div>
-      <MessageInput onSendMessage={handleSendMessage} />
+      <MessageInput onSendMessage={handleSendMessage} dmUserId={dmUserId} />
     </div>
   )
 }
