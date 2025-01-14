@@ -1,43 +1,34 @@
 # Chat Components
 
-This directory contains the core chat components used throughout the application.
+This directory contains components for the chat functionality.
 
 ## Components
 
 ### ChatArea
-The main chat display area that shows messages and handles message input.
-- Displays messages in a scrollable container
-- Handles message sending and receiving
-- Supports both channel and DM conversations
-
-### MessageInput
-The message input component with support for:
-- Text input with multi-line support
-- Send button
-- AI Response button (in DM conversations)
-  - Generates AI responses based on the other user's message history
-  - Only available in DM conversations
-  - Uses semantic search to find relevant context from the user's past messages
+- Handles display of messages in channels and DMs
+- Implements smart scroll behavior that only triggers on actual message changes
+- For DMs, only shows messages from the actual participants in the conversation
+- Uses message IDs to determine when to scroll to bottom
 
 ### MessageBubble
-Displays individual messages with:
-- User avatar
-- Username
-- Timestamp
-- Message content
-- Reaction support
+- Displays individual chat messages
+- Shows user avatar and message content
+- Handles different message types and states
 
-### EmojiPicker
-A reusable emoji picker component for message reactions.
+### MessageInput
+- Handles message composition and sending
+- Supports both channel and DM contexts
 
-## Features
+## Behavior Notes
 
-### AI Response Generation
-In DM conversations, users can generate AI responses that mimic the other user's communication style:
-1. Type a message in the input field
-2. Click the "AI Response" button
-3. The system will:
-   - Send your original message
-   - Generate and send an AI response based on the other user's message history
-   - Use semantic search to find relevant context from past messages
-   - Maintain conversation flow with natural responses 
+- Scroll to bottom only happens when new messages are added, not on status changes
+- DM conversations are filtered to only show messages from the actual participants
+- Channel selection is preserved when switching workspaces
+- Status indicators are properly contained within their components
+
+## Recent Updates
+
+1. Fixed scroll behavior to only trigger on actual message changes
+2. Improved DM message filtering to only show relevant participants
+3. Fixed workspace/channel navigation to preserve user selections
+4. Removed stray UI elements causing visual artifacts 

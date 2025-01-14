@@ -93,11 +93,6 @@ export default function DMPage({ params }: { params: { userId: string } }) {
       <div className="border-b px-4 py-2">
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-semibold">{otherUser.username}</h1>
-          <span className={`h-2 w-2 rounded-full ${
-            otherUser.status === 'online' ? 'bg-green-500' :
-            otherUser.status === 'busy' ? 'bg-yellow-500' :
-            'bg-gray-500'
-          }`} />
         </div>
       </div>
       <ChatArea dmUserId={params.userId} />

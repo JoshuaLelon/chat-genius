@@ -15,7 +15,6 @@ interface ChatAreaProps {
 export function ChatArea({ channelId, dmUserId }: ChatAreaProps) {
   const { workspace, currentUser, addMessage } = useChatContext()
   const [isLoading, setIsLoading] = useState(true)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
 
   console.log("[ChatArea] Rendering with:", {
     channelId,
@@ -27,10 +26,24 @@ export function ChatArea({ channelId, dmUserId }: ChatAreaProps) {
 
   const messages = channelId
     ? workspace.channels.find(c => c.id === channelId)?.messages || []
-    : workspace.directMessages.find(dm =>
-        dm.participants.some(p => p.id === dmUserId) &&
-        dm.participants.some(p => p.id === currentUser.id)
-      )?.messages || []
+    : (() => {
+        const dm = workspace.directMessages.find(dm =>
+          dm.participants.some(p => p.id === dmUserId) &&
+          dm.participants.some(p => p.id === currentUser.id)
+        );
+        
+        if (!dm) return [];
+        
+        // Get the exact two participant IDs
+        const participantIds = [
+          currentUser.id,
+          dmUserId
+        ];
+        
+        return dm.messages.filter(m => 
+          participantIds.includes(m.user_id)
+        );
+      })();
 
   console.log("[ChatArea] Found messages:", messages.length);
 
@@ -46,10 +59,6 @@ export function ChatArea({ channelId, dmUserId }: ChatAreaProps) {
     const timer = setTimeout(() => setIsLoading(false), 500)
     return () => clearTimeout(timer)
   }, [channelId, dmUserId])
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
 
   const handleSendMessage = async (content: string) => {
     console.log("[ChatArea] Sending message:", {
@@ -96,7 +105,6 @@ export function ChatArea({ channelId, dmUserId }: ChatAreaProps) {
           <div className="flex items-center justify-center h-full">
             <p className="text-muted-foreground">Start a new conversation</p>
           </div>
-          <div ref={messagesEndRef} />
         </div>
         <MessageInput onSendMessage={handleSendMessage} dmUserId={dmUserId} />
       </div>
@@ -113,7 +121,6 @@ export function ChatArea({ channelId, dmUserId }: ChatAreaProps) {
             currentUser={currentUser}
           />
         ))}
-        <div ref={messagesEndRef} />
       </div>
       <MessageInput onSendMessage={handleSendMessage} dmUserId={dmUserId} />
     </div>

@@ -83,12 +83,14 @@ export function UserStatus({ user, onLogout }: UserStatusProps) {
               className="h-auto p-0 text-xs text-muted-foreground"
               disabled={isUpdating}
             >
-              <Circle className={`mr-1 h-2 w-2 ${
-                status === 'online' ? 'fill-green-400 text-green-400' :
-                status === 'busy' ? 'fill-yellow-400 text-yellow-400' :
-                'fill-muted-foreground text-muted-foreground'
-              }`} />
-              {status.charAt(0).toUpperCase() + status.slice(1)}
+              {status && (
+                <Circle className={`mr-1 h-2 w-2 ${
+                  status === 'online' ? 'fill-green-400 text-green-400' :
+                  status === 'busy' ? 'fill-yellow-400 text-yellow-400' :
+                  'fill-muted-foreground text-muted-foreground'
+                }`} />
+              )}
+              {status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Loading...'}
               {isUpdating && '...'}
             </Button>
           </DropdownMenuTrigger>

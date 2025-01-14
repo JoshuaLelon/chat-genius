@@ -78,11 +78,13 @@ export function Sidebar({ activeWorkspace, activeChannelId, activeUserId, curren
                         : 'hover:bg-accent hover:text-accent-foreground'
                     }`}
                   >
-                    <Circle className={`mr-2 h-2 w-2 ${
-                      user.status === 'online' ? 'fill-green-500 text-green-500' :
-                      user.status === 'busy' ? 'fill-yellow-500 text-yellow-500' :
-                      'fill-gray-500 text-gray-500'
-                    }`} />
+                    {user.status && (
+                      <Circle className={`mr-2 h-2 w-2 ${
+                        user.status === 'online' ? 'fill-green-500 text-green-500' :
+                        user.status === 'busy' ? 'fill-yellow-500 text-yellow-500' :
+                        'fill-gray-500 text-gray-500'
+                      }`} />
+                    )}
                     {user.email.split('@')[0]}
                   </Link>
                 ))

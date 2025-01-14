@@ -153,15 +153,12 @@ export default function ChatLayout({
         channels: workspaceData.channels.map(c => ({ id: c.id, name: c.name }))
       })
       
-      // Update workspace state first
+      // Update workspace state
       setActiveWorkspace(workspaceData)
       
-      // Reset active states
-      setActiveChannelId(undefined)
-      setActiveUserId(undefined)
-      
       // Only navigate to first channel if we're at the root chat path
-      if (pathname === '/chat' && workspaceData.channels.length > 0) {
+      // and not already in a channel or DM
+      if (pathname === '/chat' && !activeChannelId && !activeUserId && workspaceData.channels.length > 0) {
         const firstChannelId = workspaceData.channels[0].id
         console.log("[ChatLayout] Navigating to first channel:", {
           workspaceId: workspaceData.id,
@@ -169,11 +166,8 @@ export default function ChatLayout({
           channelId: firstChannelId,
           channelName: workspaceData.channels[0].name
         })
-        // Use setTimeout to ensure state updates are processed
-        setTimeout(() => {
-          setActiveChannelId(firstChannelId)
-          router.push(`/chat/channel/${firstChannelId}`)
-        }, 0)
+        setActiveChannelId(firstChannelId)
+        router.push(`/chat/channel/${firstChannelId}`)
       }
     } catch (error) {
       console.error('[ChatLayout] Error switching workspace:', error)
