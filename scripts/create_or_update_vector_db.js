@@ -35,7 +35,45 @@ async function chunkIfNecessary(messages, chunkSize = 1000, chunkOverlap = 100) 
   return docs;
 }
 
-async function updateVectorStore(messages) {
+async function ensureVectorizedMessagesTable() {
+  // Check if table exists
+  const { data, error } = await supabaseClient
+    .from('vectorized_messages')
+    .select('id')
+    .limit(1);
+
+  if (error && error.code === '42P01') { // Table doesn't exist error code
+    // Create the table using Supabase's SQL query
+    const { error: createError } = await supabaseClient.rpc('exec', {
+      query: `
+        create table public.vectorized_messages (
+          id bigserial primary key,
+          content text,
+          embedding vector(1536),
+          user_id uuid references public.profiles(id) not null,
+          created_at timestamp with time zone default timezone('utc'::text, now()) not null
+        );
+
+        create index on public.vectorized_messages using btree (user_id);
+      `
+    });
+
+    if (createError) {
+      console.error('Error creating vectorized_messages table:', createError);
+      throw createError;
+    }
+
+    console.log('Created vectorized_messages table');
+  } else if (error) {
+    console.error('Error checking vectorized_messages table:', error);
+    throw error;
+  }
+}
+
+async function updateVectorStore(messages, userId) {
+  // Step 0: Ensure table exists
+  await ensureVectorizedMessagesTable();
+
   // Step 1: Split messages into chunks if needed
   const docs = await chunkIfNecessary(messages);
 
@@ -45,7 +83,10 @@ async function updateVectorStore(messages) {
   // Step 3: Upload to Supabase
   const vectorStore = await SupabaseVectorStore.fromDocuments(docs, embeddings, {
     client: supabaseClient,
-    tableName: "documents", // Ensure this table exists in Supabase
+    tableName: "vectorized_messages",
+    extraData: {
+      user_id: userId
+    }
   });
 
   console.log("Vector store updated successfully.");
@@ -76,7 +117,7 @@ async function main() {
   
   if (!messages) return;
   
-  await updateVectorStore(messages);
+  await updateVectorStore(messages, ALICE_ID);
 }
 
 main().catch(console.error);
