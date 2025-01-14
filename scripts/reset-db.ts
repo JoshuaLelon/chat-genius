@@ -2,6 +2,7 @@ import { Client } from "pg";
 import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
+import { createSeedUsersWithAuth } from "./seed-auth-users";
 
 // Load environment variables from .env file
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
@@ -49,26 +50,23 @@ async function resetDatabase() {
     `);
     console.log("Existing data cleared");
 
-    // Get all migration files
-    const migrationsDir = path.resolve(__dirname, "../supabase/migrations");
-    const migrationFiles = fs.readdirSync(migrationsDir)
-      .filter(file => file.endsWith('.sql'))
-      .sort();
+    // Run the initial schema migration
+    console.log("Running initial schema migration...");
+    const migrationPath = path.resolve(__dirname, "../supabase/migrations/initial_schema_and_policies.sql");
+    const migration = fs.readFileSync(migrationPath, "utf8");
+    await client.query(migration);
+    console.log("Database migration completed");
 
-    // Execute each migration file in order
-    for (const file of migrationFiles) {
-      console.log(`Running migration: ${file}`);
-      const migrationPath = path.resolve(migrationsDir, file);
-      const migration = fs.readFileSync(migrationPath, "utf8");
-      await client.query(migration);
-    }
-    console.log("Database migrations completed");
+    // Create auth users with passwords first
+    console.log("Creating auth users...");
+    await createSeedUsersWithAuth();
+    console.log("Auth users created");
 
     // Run the seed SQL file
     const seedPath = path.resolve(__dirname, "../supabase/seed.sql");
     const seed = fs.readFileSync(seedPath, "utf8");
     await client.query(seed);
-    console.log("Database seeding completed");
+    console.log("Database SQL seeding completed");
 
     console.log("Database reset and seeding completed successfully!");
   } catch (error) {

@@ -30,7 +30,7 @@
 
 ## 5. Testing Infrastructure
 - [x] Write unit tests for all API endpoints
-- [x] Write unit tests for all Supabase interaction functions (if it's not covered by the previous checklist item)
+- [ ] Write unit tests for all Supabase interaction functions (if it's not covered by the previous checklist item)
 - [ ] Create integration tests for API endpoints
 
 

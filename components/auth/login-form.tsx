@@ -24,41 +24,31 @@ export function LoginForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    console.log("[LoginForm] Starting login attempt...")
     setError(null)
     setIsLoading(true)
 
     try {
-      console.log("[LoginForm] Calling supabase.auth.signInWithPassword...")
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      console.log("[LoginForm] Sign in response:", { data, error });
-
       if (error) {
-        console.error("[LoginForm] Sign in error:", error);
         throw error;
       }
 
       if (data.user) {
-        console.log("[LoginForm] Sign in successful, user:", data.user);
-        console.log("[LoginForm] Session:", data.session);
-        console.log("[LoginForm] Redirecting to /chat...");
         router.push('/chat');
       }
     } catch (error: any) {
-      console.error("[LoginForm] Caught error:", error);
       setError(error.message || 'Failed to sign in');
     } finally {
       setIsLoading(false)
-      console.log("[LoginForm] Login attempt completed");
     }
   }
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} suppressHydrationWarning>
       <Card>
         <CardHeader>
           <CardTitle>Login</CardTitle>
@@ -77,6 +67,7 @@ export function LoginForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
+              suppressHydrationWarning
             />
           </div>
           <div className="space-y-2">
@@ -89,6 +80,7 @@ export function LoginForm() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
+              suppressHydrationWarning
             />
           </div>
           {error && (

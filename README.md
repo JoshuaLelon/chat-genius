@@ -60,10 +60,10 @@ yarn dev
 The reset-db script will:
 - Drop and recreate the database schema
 - Run all migrations
+- Create test users with email/password authentication
 - Seed the database with test data including:
-  - Test users with different roles (admin/member)
-  - User profiles
-  - Workspaces (General, Marketing Team, Engineering Team)
+  - User profiles with status and avatars
+  - Workspaces (Design Workspace, Engineering Workspace)
   - Channels for each workspace
   - Initial messages in channels
   - Direct messages between workspace members

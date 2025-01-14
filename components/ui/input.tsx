@@ -2,8 +2,21 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
+export interface InputProps
+  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "form"> {
+  form?: string
+}
+
+const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, type, ...props }, ref) => {
+    // Create a new props object without the server-side attributes
+    const cleanProps = { ...props };
+    delete (cleanProps as any).field_signature;
+    delete (cleanProps as any).form_signature;
+    delete (cleanProps as any).alternative_form_signature;
+    delete (cleanProps as any).visibility_annotation;
+    delete (cleanProps as any).pm_parser_annotation;
+
     return (
       <input
         type={type}
@@ -12,7 +25,8 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
           className
         )}
         ref={ref}
-        {...props}
+        suppressHydrationWarning
+        {...cleanProps}
       />
     )
   }
