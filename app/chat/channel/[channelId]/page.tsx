@@ -20,9 +20,6 @@ export default function ChannelPage({ params }: { params: { channelId: string } 
       activeChannelId: params.channelId
     });
 
-    // Reset channel when workspace changes
-    setChannel(null)
-
     // Find the channel in the current workspace
     const foundChannel = workspace.channels.find(c => c.id === params.channelId)
     
@@ -35,22 +32,16 @@ export default function ChannelPage({ params }: { params: { channelId: string } 
       })
       setChannel(foundChannel)
     } else {
-      console.log('[ChannelPage] Channel not found in workspace, redirecting...', {
+      console.log('[ChannelPage] Channel not found in workspace:', {
         searchedChannelId: params.channelId,
         availableChannels: workspace.channels.map(c => ({ id: c.id, name: c.name })),
         workspaceId: workspace.id,
         workspaceName: workspace.name
       })
-      // If the channel doesn't exist in the current workspace, redirect to the first channel
-      const firstChannel = workspace.channels[0]
-      if (firstChannel) {
-        router.push(`/chat/channel/${firstChannel.id}`)
-      } else {
-        // If there are no channels, redirect to the main chat page
-        router.push('/chat')
-      }
+      // Don't redirect - let the layout component handle navigation
+      setChannel(null)
     }
-  }, [workspace, params.channelId, router])
+  }, [workspace, params.channelId])
 
   if (!channel) {
     return (
