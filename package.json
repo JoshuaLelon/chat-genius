@@ -7,7 +7,6 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "generate-seed": "tsx scripts/generate-seed.ts",
     "test": "vitest",
     "test:coverage": "vitest run --coverage",
     "create-test-user": "tsx scripts/create-test-user.ts",
@@ -15,8 +14,8 @@
     "update-db-functions": "tsx scripts/update-db-functions.ts",
     "disable-rls": "tsx scripts/disable-rls.ts",
     "test-api": "tsx scripts/test-api.ts",
-    "setup-users": "NODE_OPTIONS='--loader ts-node/esm' ts-node --project tsconfig.node.json scripts/setup-test-users.ts",
-    "reset-db": "NODE_OPTIONS='--loader ts-node/esm' ts-node --project tsconfig.node.json scripts/reset-db.ts"
+    "seed": "NODE_OPTIONS='--loader ts-node/esm' ts-node --project tsconfig.node.json scripts/reset-db.ts",
+    "reset-db": "npm run seed"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

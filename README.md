@@ -21,7 +21,7 @@ See individual component directories for detailed documentation:
 ## Development
 
 ### Prerequisites
-- Node.js 18+
+- Node.js 18+ (arm64 version if using Apple Silicon - verify with `node -p process.arch`)
 - npm or yarn
 - Supabase account
 - OpenAI API key
@@ -52,7 +52,23 @@ yarn dev
 ### Database Setup
 1. Set up your Supabase project
 2. Run the migrations in `supabase/migrations`
-3. Run the seed script: `npm run seed`
+3. Reset and seed the database:
+   ```bash
+   npm run reset-db
+   ```
+
+The reset-db script will:
+- Drop and recreate the database schema
+- Run all migrations
+- Seed the database with test data including:
+  - Test users with different roles (admin/member)
+  - User profiles
+  - Workspaces (General, Marketing Team, Engineering Team)
+  - Channels for each workspace
+  - Initial messages in channels
+  - Direct messages between workspace members
+
+See [Scripts Documentation](./scripts/README.md) for more details about database management scripts.
 
 ## AI Features
 
