@@ -3,11 +3,17 @@ import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
 import { createSeedUsersWithAuth } from "./seed-auth-users";
+import { updateVectorStore, supabaseClient, clearVectorStore } from "./create_or_update_vector_db";
 
 // Load environment variables from .env file
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
 const postgresUrl = process.env.POSTGRES_URL_NON_POOLING!.replace('?sslmode=require', '?sslmode=prefer');
+
+interface Message {
+  content: string;
+  user_id: string;
+}
 
 async function resetDatabase() {
   console.log("Starting database reset...");
@@ -40,6 +46,7 @@ async function resetDatabase() {
         TRUNCATE TABLE public.workspace_members CASCADE;
         TRUNCATE TABLE public.workspaces CASCADE;
         TRUNCATE TABLE public.profiles CASCADE;
+        TRUNCATE TABLE public.vectorized_messages CASCADE;
         
         -- Delete data from auth schema tables
         TRUNCATE TABLE auth.users CASCADE;
@@ -63,17 +70,59 @@ async function resetDatabase() {
     console.log("Auth users created");
 
     // Run the seed SQL file
+    console.log("Running seed SQL file...");
     const seedPath = path.resolve(__dirname, "../supabase/seed.sql");
     const seed = fs.readFileSync(seedPath, "utf8");
     await client.query(seed);
     console.log("Database SQL seeding completed");
 
+    // Close the pg client before using supabase client
+    await client.end();
+
+    // Update vector store with seeded messages
+    console.log("Updating vector store...");
+    
+    // Clear any existing vectors first
+    await clearVectorStore();
+    console.log("Existing vectors cleared");
+
+    const { data: messages, error } = await supabaseClient
+      .from('messages')
+      .select('content, user_id');
+
+    if (error) {
+      throw error;
+    }
+
+    if (messages && messages.length > 0) {
+      // Group messages by user_id
+      const messagesByUser = new Map<string, string[]>();
+      messages.forEach((msg: Message) => {
+        const userMessages = messagesByUser.get(msg.user_id) || [];
+        userMessages.push(msg.content);
+        messagesByUser.set(msg.user_id, userMessages);
+      });
+
+      // Process each user's messages
+      for (const [userId, userMessages] of messagesByUser.entries()) {
+        console.log(`Processing vectors for user ${userId}: ${userMessages.length} messages`);
+        try {
+          await updateVectorStore(userMessages, userId);
+          console.log(`Successfully processed vectors for user ${userId}`);
+        } catch (error) {
+          console.error(`Error processing vectors for user ${userId}:`, error);
+          throw error;
+        }
+      }
+    } else {
+      console.log("No messages found to vectorize");
+    }
+    console.log("Vector store update completed");
+
     console.log("Database reset and seeding completed successfully!");
   } catch (error) {
     console.error("Error in database reset:", error);
     throw error;
-  } finally {
-    await client.end();
   }
 }
 

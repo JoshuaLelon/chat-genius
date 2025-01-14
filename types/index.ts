@@ -16,6 +16,7 @@ export interface Message {
   dm_id?: string
   created_at: string
   reactions: Reaction[]
+  is_ai?: boolean
 }
 
 export interface Reaction {

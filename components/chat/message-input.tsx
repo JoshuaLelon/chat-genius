@@ -4,16 +4,18 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { useState } from "react"
 import { toast } from "react-hot-toast"
+import { useChatContext } from "@/contexts/ChatContext"
 
 interface MessageInputProps {
   onSendMessage: (content: string) => Promise<void>
-  dmUserId?: string  // Add dmUserId prop for DM context
+  dmUserId?: string
 }
 
 export function MessageInput({ onSendMessage, dmUserId }: MessageInputProps) {
   const [content, setContent] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isGeneratingAI, setIsGeneratingAI] = useState(false)
+  const { addTemporaryMessage } = useChatContext()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -44,29 +46,69 @@ export function MessageInput({ onSendMessage, dmUserId }: MessageInputProps) {
   }
 
   const handleAIResponse = async () => {
-    if (!content.trim() || !dmUserId || isGeneratingAI) return;
+    console.log("[MessageInput] Starting AI response generation:", {
+      content,
+      dmUserId,
+      isGeneratingAI
+    });
+
+    if (!content.trim() || !dmUserId || isGeneratingAI) {
+      console.log("[MessageInput] Skipping AI response - invalid state:", {
+        hasContent: !!content.trim(),
+        hasDmUserId: !!dmUserId,
+        isGeneratingAI
+      });
+      return;
+    }
 
     try {
       setIsGeneratingAI(true);
+      console.log("[MessageInput] Making API request to /api/ai-respond:", {
+        userId: dmUserId,
+        question: content
+      });
+
       const response = await fetch("/api/ai-respond", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: dmUserId, question: content }),
       });
 
+      console.log("[MessageInput] Received API response:", {
+        status: response.status,
+        ok: response.ok
+      });
+
       if (!response.ok) {
         const error = await response.json();
+        console.error("[MessageInput] API error response:", error);
         throw new Error(error.error || "Failed to generate AI response");
       }
 
-      const { response: aiResponse } = await response.json();
-      await onSendMessage(content); // Send the original message
-      await onSendMessage(aiResponse); // Send the AI response
+      const data = await response.json();
+      console.log("[MessageInput] API success response:", {
+        responseLength: data.response.length
+      });
+      
+      console.log("[MessageInput] Sending original user message");
+      await onSendMessage(content);
+      
+      console.log("[MessageInput] Adding AI response as temporary message");
+      addTemporaryMessage(dmUserId, data.response, true);
+      
       setContent("");
     } catch (error) {
       console.error("[MessageInput] AI response error:", error);
+      if (error instanceof Error) {
+        console.error("[MessageInput] Error details:", {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        });
+      }
       toast.error(error instanceof Error ? error.message : "Failed to generate AI response");
     } finally {
+      console.log("[MessageInput] Finishing AI response generation");
       setIsGeneratingAI(false);
     }
   };

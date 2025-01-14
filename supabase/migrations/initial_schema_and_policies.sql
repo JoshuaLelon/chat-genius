@@ -2,6 +2,70 @@
 drop schema if exists public cascade;
 create schema public;
 
+-- Enable the pgvector extension to work with embedding vectors
+create extension if not exists vector;
+
+-- Create a table to store message vectors
+create table public.vectorized_messages (
+  id bigserial primary key,
+  content text not null,
+  metadata jsonb,
+  embedding vector(1536)
+);
+
+-- Grant permissions on vectorized_messages
+grant all privileges on table public.vectorized_messages to service_role;
+grant all privileges on table public.vectorized_messages to anon;
+grant all privileges on table public.vectorized_messages to authenticated;
+grant all privileges on sequence public.vectorized_messages_id_seq to service_role;
+grant all privileges on sequence public.vectorized_messages_id_seq to anon;
+grant all privileges on sequence public.vectorized_messages_id_seq to authenticated;
+
+-- Create an index for faster similarity search
+create index vectorized_messages_embedding_idx 
+  on vectorized_messages 
+  using ivfflat (embedding vector_cosine_ops)
+  with (lists = 100);
+
+-- Function to search for similar messages
+create or replace function match_documents(
+  query_embedding vector(1536),
+  match_count int DEFAULT 10,
+  filter jsonb DEFAULT '{}'
+) returns table (
+  id bigint,
+  content text,
+  metadata jsonb,
+  similarity float
+)
+language plpgsql
+as $$
+begin
+  return query
+  select
+    vectorized_messages.id,
+    vectorized_messages.content,
+    vectorized_messages.metadata,
+    1 - (vectorized_messages.embedding <=> query_embedding) as similarity
+  from vectorized_messages
+  where metadata @> filter
+  order by vectorized_messages.embedding <=> query_embedding
+  limit match_count;
+end;
+$$;
+
+-- Enable RLS on vectorized_messages
+alter table public.vectorized_messages enable row level security;
+
+-- Add policy for vectorized_messages
+create policy "Allow reading vectorized messages"
+  on public.vectorized_messages for select
+  using (true);
+
+create policy "Allow inserting vectorized messages"
+  on public.vectorized_messages for insert
+  with check (auth.uid() is not null);
+
 -- Grant permissions to service role and anon role
 grant usage on schema public to service_role, anon, authenticated;
 grant all privileges on schema public to service_role;
@@ -266,35 +330,3 @@ create policy "Allow adding reactions"
 -- Add role column to workspace_members table
 alter table public.workspace_members
 add column role text check (role in ('admin', 'member')) default 'member' not null;
-
-
--- ===========================
--- 20240321000001_add_vectorized_messages.sql
--- ===========================
-
--- Enable the pgvector extension to work with embedding vectors
-create extension if not exists vector;
-
--- Create the vectorized_messages table
-create table public.vectorized_messages (
-  id bigserial primary key,
-  content text,
-  embedding vector(1536),
-  metadata jsonb default '{}'::jsonb,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
-
--- Create an index on user_id in metadata
-create index vectorized_messages_user_id_idx on public.vectorized_messages using btree ((metadata->>'user_id'));
-
--- Enable row level security
-alter table public.vectorized_messages enable row level security;
-
--- Create policies
-create policy "Users can view their own vectorized messages"
-  on public.vectorized_messages for select
-  using (metadata->>'user_id' = auth.uid()::text);
-
-create policy "Service role can manage all vectorized messages"
-  on public.vectorized_messages for all
-  using (auth.jwt()->>'role' = 'service_role');

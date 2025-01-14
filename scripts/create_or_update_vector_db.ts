@@ -16,7 +16,7 @@ if (!SUPABASE_URL || !SUPABASE_KEY || !OPENAI_API_KEY) {
   process.exit(1);
 }
 
-const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY, {
+export const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: {
     persistSession: false,
     autoRefreshToken: false,
@@ -45,17 +45,20 @@ async function chunkIfNecessary(messages: string[], userId: string, chunkSize = 
 }
 
 async function ensureVectorizedMessagesTable(): Promise<void> {
+  // Check if table exists
   const { error } = await supabaseClient
     .from('vectorized_messages')
     .select('id')
     .limit(1);
 
-  if (error) {
+  if (error && error.code === '42P01') { // Table doesn't exist
+    throw new Error('vectorized_messages table does not exist. Please run migrations first.');
+  } else if (error) {
     throw error;
   }
 }
 
-async function updateVectorStore(messages: string[], userId: string): Promise<void> {
+export async function updateVectorStore(messages: string[], userId: string): Promise<void> {
   await ensureVectorizedMessagesTable();
   const docs = await chunkIfNecessary(messages, userId);
   const embeddings = new OpenAIEmbeddings({ openAIApiKey: OPENAI_API_KEY });
@@ -67,31 +70,10 @@ async function updateVectorStore(messages: string[], userId: string): Promise<vo
   });
 }
 
-async function fetchUserMessages(userId: string): Promise<string[] | null> {
-  const { data: messages, error } = await supabaseClient
-    .from('messages')
-    .select('content')
-    .eq('user_id', userId);
-
-  if (error || !messages || messages.length === 0) {
-    return null;
-  }
-
-  return messages.map(msg => msg.content);
-}
-
-async function main() {
-  const ALICE_ID = '00000000-0000-0000-0000-000000000001';
-  const messages = await fetchUserMessages(ALICE_ID);
-  
-  if (!messages) {
-    return;
-  }
-  
-  await updateVectorStore(messages, ALICE_ID);
-}
-
-main().catch(error => {
-  console.error('Error:', error);
-  process.exit(1);
-}); 
+export async function clearVectorStore(): Promise<void> {
+  await ensureVectorizedMessagesTable();
+  await supabaseClient
+    .from('vectorized_messages')
+    .delete()
+    .neq('id', 0);
+} 

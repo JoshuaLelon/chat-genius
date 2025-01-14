@@ -9,6 +9,7 @@ interface ChatContextType {
   workspace: Workspace
   currentUser: User
   addMessage: (channelId: string | null, dmUserId: string | null, content: string) => Promise<void>
+  addTemporaryMessage: (dmUserId: string, content: string, isAI?: boolean) => void
   updateUserStatus: (status: 'online' | 'offline' | 'busy') => Promise<void>
 }
 
@@ -373,6 +374,37 @@ export function ChatProvider({ children, initialWorkspace, currentUser }: { chil
     }
   };
 
+  const addTemporaryMessage = (dmUserId: string, content: string, isAI: boolean = false) => {
+    console.log("[ChatContext] Adding temporary message:", { dmUserId, content, isAI });
+    
+    setWorkspace(current => {
+      const updated = structuredClone(current);
+      const dm = updated.directMessages.find(dm => 
+        dm.participants.some(p => p.id === dmUserId) &&
+        dm.participants.some(p => p.id === currentUser.id)
+      );
+
+      if (dm) {
+        const tempMessage: Message = {
+          id: `temp-${Date.now()}`,
+          content,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          user_id: isAI ? dmUserId : currentUser.id,
+          sender: isAI ? dm.participants.find(p => p.id === dmUserId)! : currentUser,
+          reactions: [],
+          is_ai: isAI
+        };
+
+        dm.messages = [...dm.messages, tempMessage].sort(
+          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+      }
+
+      return updated;
+    });
+  };
+
   const updateStatus = async (status: 'online' | 'offline' | 'busy') => {
     try {
       console.log("[ChatProvider] Updating user status:", {
@@ -396,6 +428,7 @@ export function ChatProvider({ children, initialWorkspace, currentUser }: { chil
       workspace,
       currentUser,
       addMessage,
+      addTemporaryMessage,
       updateUserStatus: updateStatus
     }}>
       {children}

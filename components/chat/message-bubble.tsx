@@ -145,6 +145,9 @@ export function MessageBubble({ message, currentUser }: MessageBubbleProps) {
       <div className="flex-1 space-y-1">
         <div className="flex items-center gap-2">
           <span className="font-semibold">{displayName}</span>
+          {message.is_ai && (
+            <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100 px-1.5 py-0.5 rounded">AI</span>
+          )}
           <span className="text-xs text-muted-foreground">
             {formatDate(message.created_at)}
           </span>
