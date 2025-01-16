@@ -31,6 +31,13 @@ async function main() {
     }
   );
 
+  // First, clear existing vectorized messages
+  console.log("Clearing existing vectorized messages...");
+  await supabaseClient
+    .from("vectorized_messages")
+    .delete()
+    .neq('id', 0);
+
   console.log("Fetching messages from database...");
   const { data: messages, error } = await supabaseClient
     .from("messages")

@@ -67,114 +67,140 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create embeddings for the query
-    console.log("[AI-Respond API] Creating embeddings with OpenAI");
-    let embeddings;
-    try {
-      embeddings = new OpenAIEmbeddings({
-        openAIApiKey: process.env.OPENAI_API_KEY,
-      });
-    } catch (error) {
-      console.error("[AI-Respond API] Error creating embeddings:", error);
-      throw error;
-    }
-
-    console.log("[AI-Respond API] Creating vector store");
-    // Retrieve relevant documents from Supabase
-    let vectorStore;
-    try {
-      vectorStore = new SupabaseVectorStore(embeddings, {
-        client: supabaseClient,
-        tableName: "vectorized_messages",
-        queryName: "match_documents",
-      });
-    } catch (error) {
-      console.error("[AI-Respond API] Error creating vector store:", error);
-      throw error;
-    }
-
-    const metadata = { user_id: userId };
-    console.log("[AI-Respond API] Setting up retriever with metadata:", metadata);
-    const retriever = vectorStore.asRetriever({
-      filter: metadata,
-      k: 10,
-      searchType: "similarity",
+    // Debug: Check if profiles table exists and has data
+    const { data: allProfiles, error: profilesError } = await supabaseClient
+      .from('profiles')
+      .select('id, email')
+      .limit(5);
+    
+    console.log("[AI-Respond API] First 5 profiles in database:", { 
+      profiles: allProfiles,
+      error: profilesError
     });
 
-    console.log("[AI-Respond API] Getting relevant documents");
-    let relevantDocs;
-    try {
-      relevantDocs = await retriever.getRelevantDocuments(question);
-      console.log("[AI-Respond API] Found relevant documents:", { 
-        count: relevantDocs.length,
-        docs: relevantDocs.map(doc => ({
-          pageContent: doc.pageContent.substring(0, 100) + "...",
-          metadata: doc.metadata
-        }))
-      });
-    } catch (error) {
-      console.error("[AI-Respond API] Error getting relevant documents:", error);
-      throw error;
-    }
+    // Get the user's profile ID from the profiles table
+    const { data: profile, error: profileError } = await supabaseClient
+      .from('profiles')
+      .select('id, email')
+      .eq('id', userId)
+      .single();
 
-    if (relevantDocs.length === 0) {
-      console.log("[AI-Respond API] No relevant context found");
+    console.log("[AI-Respond API] Profile lookup result:", {
+      profile,
+      error: profileError,
+      searchedId: userId
+    });
+
+    if (profileError || !profile) {
+      console.error("[AI-Respond API] Error getting profile:", profileError);
       return NextResponse.json(
-        { error: "No relevant context found for this user" },
+        { error: "User not found" },
         { status: 404 }
       );
     }
 
-    // Prepare context for the LLM
-    const context = relevantDocs.map((doc) => doc.pageContent).join("\n");
-    console.log("[AI-Respond API] Prepared context:", { contextLength: context.length });
+    // Initialize OpenAI embeddings
+    const embeddings = new OpenAIEmbeddings({
+      openAIApiKey: process.env.OPENAI_API_KEY,
+    });
 
-    // Generate response using LLM
-    console.log("[AI-Respond API] Initializing OpenAI");
-    let llm;
-    try {
-      llm = new OpenAI({
-        openAIApiKey: process.env.OPENAI_API_KEY,
-        temperature: 0.7,
-      });
-    } catch (error) {
-      console.error("[AI-Respond API] Error initializing OpenAI:", error);
-      throw error;
-    }
+    // Initialize vector store
+    const vectorStore = new SupabaseVectorStore(embeddings, {
+      client: supabaseClient,
+      tableName: 'vectorized_messages',
+      queryName: 'match_documents',
+    });
 
-    console.log("[AI-Respond API] Generating response with LLM");
-    let response;
-    try {
-      response = await llm.call(
-        `You are the user. Answer the following question in your own style based on your past messages:\n\nQuestion: ${question}\n\nContext from your past messages: ${context}\n\nAnswer:`
-      );
-      console.log("[AI-Respond API] Generated response:", { responseLength: response.length });
-    } catch (error) {
-      console.error("[AI-Respond API] Error generating response:", error);
-      throw error;
-    }
-
-    // Calculate recall score
-    console.log("[AI-Respond API] Getting user's first 5 messages");
-    const { data: firstMessages } = await supabaseClient
+    // Get the user's recent messages for context
+    const { data: recentMessages, error: messagesError } = await supabaseClient
       .from('messages')
-      .select('id')
+      .select('content, created_at')
       .eq('user_id', userId)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
       .limit(5);
 
-    const firstMessageIds = firstMessages?.map(msg => msg.id) || [];
-    const matchedFirstMessages = relevantDocs.filter(doc => 
-      doc.metadata.message_id && firstMessageIds.includes(doc.metadata.message_id)
-    );
-    
-    const recallScore = firstMessageIds.length > 0 
-      ? matchedFirstMessages.length / firstMessageIds.length
-      : 0;
+    if (messagesError) {
+      console.error("[AI-Respond API] Error getting recent messages:", messagesError);
+      return NextResponse.json(
+        { error: "Failed to get message history" },
+        { status: 500 }
+      );
+    }
 
-    console.log("[AI-Respond API] Recall score calculation:", {
-      firstMessageIds,
-      matchedMessageIds: matchedFirstMessages.map(doc => doc.metadata.message_id),
+    // Calculate recall score based on semantic similarity
+    let recallScore = 0;
+    let relevantMessages: typeof recentMessages = [];
+
+    if (recentMessages && recentMessages.length > 0) {
+      console.log("[AI-Respond API] Calculating similarities for messages:", {
+        questionLength: question.length,
+        numMessages: recentMessages.length
+      });
+
+      // Get embeddings for the current question and recent messages
+      const questionEmbedding = await embeddings.embedQuery(question);
+      const messageEmbeddings = await Promise.all(
+        recentMessages.map(msg => embeddings.embedQuery(msg.content))
+      );
+
+      // Calculate cosine similarity between question and each message
+      const similarities = messageEmbeddings.map((msgEmbed, idx) => {
+        const dotProduct = questionEmbedding.reduce((sum, val, i) => sum + val * msgEmbed[i], 0);
+        const questionMagnitude = Math.sqrt(questionEmbedding.reduce((sum, val) => sum + val * val, 0));
+        const messageMagnitude = Math.sqrt(msgEmbed.reduce((sum, val) => sum + val * val, 0));
+        const similarity = dotProduct / (questionMagnitude * messageMagnitude);
+        
+        console.log("[AI-Respond API] Message similarity:", {
+          messageIndex: idx,
+          messagePreview: recentMessages[idx].content.slice(0, 50) + "...",
+          similarity,
+          isRelevant: similarity > 0.80
+        });
+        
+        return {
+          similarity,
+          message: recentMessages[idx]
+        };
+      });
+
+      // Consider messages with similarity > 0.80 as relevant
+      relevantMessages = similarities
+        .filter(({similarity}) => similarity > 0.80)
+        .map(({message}) => message);
+      
+      recallScore = relevantMessages.length / similarities.length;
+      
+      console.log("[AI-Respond API] Final recall calculation:", {
+        totalMessages: similarities.length,
+        relevantMessages: relevantMessages.length,
+        recallScore,
+        similarities: similarities.map(s => s.similarity)
+      });
+    }
+
+    // Create context only from relevant messages
+    const context = relevantMessages.length > 0
+      ? relevantMessages.map(m => m.content).join('\n')
+      : '';
+
+    // Initialize OpenAI
+    const llm = new OpenAI({
+      openAIApiKey: process.env.OPENAI_API_KEY,
+      modelName: "gpt-3.5-turbo",
+      temperature: 0.7,
+    });
+
+    // Generate AI response
+    const response = await llm.invoke(
+      `Context from previous messages:
+      ${context}
+      
+      User: ${question}
+      Assistant: `
+    );
+
+    console.log("[AI-Respond API] Generated response:", {
+      responseLength: response.length,
       recallScore
     });
 
@@ -183,17 +209,14 @@ export async function POST(request: NextRequest) {
       recallScore
     });
   } catch (error) {
-    console.error("[AI-Respond API] Error in AI response generation:", error);
-    if (error instanceof Error) {
-      console.error("[AI-Respond API] Error details:", {
-        name: error.name,
-        message: error.message,
-        stack: error.stack
-      });
-    }
+    console.error("[AI-Respond API] Error processing request:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to generate AI response" },
+      { error: "Error processing request" },
       { status: 500 }
     );
   }
+}
+
+export async function GET(request: NextRequest) {
+  return NextResponse.json({ message: "Test response" });
 } 
