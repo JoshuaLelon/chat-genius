@@ -114,13 +114,19 @@ export function ChatArea({ channelId, dmUserId }: ChatAreaProps) {
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 p-4 space-y-4 overflow-y-auto">
-        {messages.map((message) => (
-          <MessageBubble
-            key={message.id}
-            message={message}
-            currentUser={currentUser}
-          />
-        ))}
+        {messages.length === 0 ? (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-muted-foreground">There is no chat history - start your first conversation!</p>
+          </div>
+        ) : (
+          messages.map((message) => (
+            <MessageBubble
+              key={message.id}
+              message={message}
+              currentUser={currentUser}
+            />
+          ))
+        )}
       </div>
       <MessageInput onSendMessage={handleSendMessage} dmUserId={dmUserId} />
     </div>
