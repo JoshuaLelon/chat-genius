@@ -17,6 +17,7 @@ export interface Message {
   created_at: string
   reactions: Reaction[]
   is_ai?: boolean
+  recallScore?: number
 }
 
 export interface Reaction {

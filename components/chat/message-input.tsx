@@ -5,6 +5,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { useState } from "react"
 import { toast } from "react-hot-toast"
 import { useChatContext } from "@/contexts/ChatContext"
+import { ChannelRecommendationModal } from "./channel-recommendation-modal"
+import { useRouter } from "next/navigation"
 
 interface MessageInputProps {
   onSendMessage: (content: string) => Promise<void>
@@ -15,7 +17,16 @@ export function MessageInput({ onSendMessage, dmUserId }: MessageInputProps) {
   const [content, setContent] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isGeneratingAI, setIsGeneratingAI] = useState(false)
+  const [isFindingChannel, setIsFindingChannel] = useState(false)
+  const [showChannelModal, setShowChannelModal] = useState(false)
+  const [channelRecommendation, setChannelRecommendation] = useState<{
+    channelId?: string
+    channelName?: string
+    workspaceId?: string
+    workspaceName?: string
+  }>({})
   const { addTemporaryMessage } = useChatContext()
+  const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -87,14 +98,15 @@ export function MessageInput({ onSendMessage, dmUserId }: MessageInputProps) {
 
       const data = await response.json();
       console.log("[MessageInput] API success response:", {
-        responseLength: data.response.length
+        responseLength: data.answer.length,
+        recallScore: data.recallScore
       });
       
       console.log("[MessageInput] Sending original user message");
       await onSendMessage(content);
       
       console.log("[MessageInput] Adding AI response as temporary message");
-      addTemporaryMessage(dmUserId, data.response, true);
+      addTemporaryMessage(dmUserId, data.answer, true, data.recallScore);
       
       setContent("");
     } catch (error) {
@@ -121,37 +133,94 @@ export function MessageInput({ onSendMessage, dmUserId }: MessageInputProps) {
     }
   }
 
+  const handleFindChannel = async () => {
+    if (!content.trim() || isFindingChannel) return
+
+    try {
+      setIsFindingChannel(true)
+      setShowChannelModal(true)
+
+      const response = await fetch("/api/find-channel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: content }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to find channel")
+      }
+
+      const { channelId, channelName, workspaceId, workspaceName } = await response.json()
+      setChannelRecommendation({ channelId, channelName, workspaceId, workspaceName })
+    } catch (error) {
+      console.error("Error finding channel:", error)
+      toast.error(error instanceof Error ? error.message : "Failed to find channel")
+      setShowChannelModal(false)
+    } finally {
+      setIsFindingChannel(false)
+    }
+  }
+
+  const handleChannelSelect = () => {
+    if (channelRecommendation.channelId) {
+      router.push(`/channels/${channelRecommendation.channelId}`)
+    }
+    setShowChannelModal(false)
+  }
+
   return (
-    <form onSubmit={handleSubmit} className="p-4 border-t">
-      <div className="flex gap-2">
-        <Textarea
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Type a message..."
-          className="min-h-[40px] max-h-[200px]"
-          disabled={isLoading || isGeneratingAI}
-        />
-        <div className="flex flex-col gap-2">
-          <Button 
-            type="submit" 
-            disabled={!content.trim() || isLoading || isGeneratingAI}
-          >
-            Send
-          </Button>
-          {dmUserId && (
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={handleAIResponse}
-              disabled={!content.trim() || isGeneratingAI || isLoading}
+    <>
+      <form onSubmit={handleSubmit} className="p-4 border-t">
+        <div className="flex gap-2">
+          <Textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type a message..."
+            className="min-h-[40px] max-h-[200px]"
+            disabled={isLoading || isGeneratingAI || isFindingChannel}
+          />
+          <div className="flex flex-col gap-2">
+            <Button 
+              type="submit" 
+              disabled={!content.trim() || isLoading || isGeneratingAI || isFindingChannel}
             >
-              AI Response
+              Send
             </Button>
-          )}
+            {dmUserId && (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleAIResponse}
+                  disabled={!content.trim() || isGeneratingAI || isLoading || isFindingChannel}
+                >
+                  AI Response
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleFindChannel}
+                  disabled={!content.trim() || isFindingChannel || isGeneratingAI || isLoading}
+                >
+                  Find Channel
+                </Button>
+              </>
+            )}
+          </div>
         </div>
-      </div>
-    </form>
+      </form>
+
+      <ChannelRecommendationModal
+        isOpen={showChannelModal}
+        onClose={() => setShowChannelModal(false)}
+        isLoading={isFindingChannel}
+        channelName={channelRecommendation.channelName}
+        workspaceName={channelRecommendation.workspaceName}
+        onChannelSelect={handleChannelSelect}
+      />
+    </>
   )
 }
 

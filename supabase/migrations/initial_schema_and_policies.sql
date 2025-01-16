@@ -5,6 +5,24 @@ create schema public;
 -- Enable the pgvector extension to work with embedding vectors
 create extension if not exists vector;
 
+-- Create users table (extends Supabase auth.users)
+create table public.profiles (
+  id uuid references auth.users on delete cascade primary key,
+  email text unique not null,
+  avatar_url text,
+  status text check (status in ('online', 'offline', 'busy')) default 'offline',
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Create workspaces table
+create table public.workspaces (
+  id uuid default gen_random_uuid() primary key,
+  name text not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
 -- Create a table to store message vectors
 create table public.vectorized_messages (
   id bigserial primary key,
@@ -12,6 +30,23 @@ create table public.vectorized_messages (
   metadata jsonb,
   embedding vector(1536)
 );
+
+-- Create vectorized_workspace_summaries table
+create table public.vectorized_workspace_summaries (
+  id uuid default gen_random_uuid() primary key,
+  workspace_id uuid references public.workspaces on delete cascade not null unique,
+  summary text not null,
+  embedding vector(1536),
+  metadata jsonb,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Create index for workspace summaries vector similarity search
+create index vectorized_workspace_summaries_embedding_idx 
+  on vectorized_workspace_summaries 
+  using ivfflat (embedding vector_cosine_ops)
+  with (lists = 100);
 
 -- Grant permissions on vectorized_messages
 grant all privileges on table public.vectorized_messages to service_role;
@@ -81,24 +116,6 @@ alter default privileges in schema public grant all on tables to authenticated;
 alter default privileges in schema public grant all on sequences to authenticated;
 alter default privileges in schema public grant all on functions to authenticated;
 
--- Create users table (extends Supabase auth.users)
-create table public.profiles (
-  id uuid references auth.users on delete cascade primary key,
-  email text unique not null,
-  avatar_url text,
-  status text check (status in ('online', 'offline', 'busy')) default 'offline',
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
-
--- Create workspaces table
-create table public.workspaces (
-  id uuid default gen_random_uuid() primary key,
-  name text not null,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
-
 -- Create workspace_members table (junction table for users-workspaces)
 create table public.workspace_members (
   workspace_id uuid references public.workspaces on delete cascade,
@@ -166,6 +183,7 @@ alter table public.messages enable row level security;
 alter table public.direct_messages enable row level security;
 alter table public.dm_participants enable row level security;
 alter table public.reactions enable row level security;
+alter table public.vectorized_workspace_summaries enable row level security;
 
 
 -- ===========================
@@ -227,6 +245,14 @@ create policy "Allow workspace members to read workspaces"
 create policy "Allow workspace creation"
   on public.workspaces for insert
   with check (auth.uid() is not null);
+
+create policy "Allow updating workspaces"
+  on public.workspaces for update
+  using (auth.uid() is not null);
+
+create policy "Allow deleting workspaces"
+  on public.workspaces for delete
+  using (auth.uid() is not null);
 
 -- Workspace members policies
 create policy "Allow reading workspace members"
@@ -322,11 +348,29 @@ create policy "Allow adding reactions"
   on public.reactions for insert
   with check (auth.uid() = user_id);
 
+-- Vectorized workspace summaries policies
+create policy "Allow reading workspace summaries"
+  on public.vectorized_workspace_summaries for select
+  using (true);
 
--- ===========================
--- 20240320000002_add_workspace_member_role.sql
--- ===========================
+create policy "Allow inserting workspace summaries"
+  on public.vectorized_workspace_summaries for insert
+  with check (auth.uid() is not null);
+
+create policy "Allow updating workspace summaries"
+  on public.vectorized_workspace_summaries for update
+  using (auth.uid() is not null);
+
+-- Grant permissions on vectorized_workspace_summaries
+grant all privileges on table public.vectorized_workspace_summaries to service_role;
+grant all privileges on table public.vectorized_workspace_summaries to anon;
+grant all privileges on table public.vectorized_workspace_summaries to authenticated;
 
 -- Add role column to workspace_members table
 alter table public.workspace_members
 add column role text check (role in ('admin', 'member')) default 'member' not null;
+
+-- Grant permissions on workspaces
+grant all privileges on table public.workspaces to service_role;
+grant all privileges on table public.workspaces to anon;
+grant all privileges on table public.workspaces to authenticated;

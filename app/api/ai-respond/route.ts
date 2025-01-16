@@ -154,7 +154,34 @@ export async function POST(request: NextRequest) {
       throw error;
     }
 
-    return NextResponse.json({ response });
+    // Calculate recall score
+    console.log("[AI-Respond API] Getting user's first 5 messages");
+    const { data: firstMessages } = await supabaseClient
+      .from('messages')
+      .select('id')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true })
+      .limit(5);
+
+    const firstMessageIds = firstMessages?.map(msg => msg.id) || [];
+    const matchedFirstMessages = relevantDocs.filter(doc => 
+      doc.metadata.message_id && firstMessageIds.includes(doc.metadata.message_id)
+    );
+    
+    const recallScore = firstMessageIds.length > 0 
+      ? matchedFirstMessages.length / firstMessageIds.length
+      : 0;
+
+    console.log("[AI-Respond API] Recall score calculation:", {
+      firstMessageIds,
+      matchedMessageIds: matchedFirstMessages.map(doc => doc.metadata.message_id),
+      recallScore
+    });
+
+    return NextResponse.json({
+      answer: response,
+      recallScore
+    });
   } catch (error) {
     console.error("[AI-Respond API] Error in AI response generation:", error);
     if (error instanceof Error) {

@@ -9,7 +9,7 @@ interface ChatContextType {
   workspace: Workspace
   currentUser: User
   addMessage: (channelId: string | null, dmUserId: string | null, content: string) => Promise<void>
-  addTemporaryMessage: (dmUserId: string, content: string, isAI?: boolean) => void
+  addTemporaryMessage: (dmUserId: string, content: string, isAI?: boolean, recallScore?: number) => void
   updateUserStatus: (status: 'online' | 'offline' | 'busy') => Promise<void>
 }
 
@@ -374,8 +374,8 @@ export function ChatProvider({ children, initialWorkspace, currentUser }: { chil
     }
   };
 
-  const addTemporaryMessage = (dmUserId: string, content: string, isAI: boolean = false) => {
-    console.log("[ChatContext] Adding temporary message:", { dmUserId, content, isAI });
+  const addTemporaryMessage = (dmUserId: string, content: string, isAI: boolean = false, recallScore?: number) => {
+    console.log("[ChatContext] Adding temporary message:", { dmUserId, content, isAI, recallScore });
     
     setWorkspace(current => {
       const updated = structuredClone(current);
@@ -393,7 +393,8 @@ export function ChatProvider({ children, initialWorkspace, currentUser }: { chil
           user_id: isAI ? dmUserId : currentUser.id,
           sender: isAI ? dm.participants.find(p => p.id === dmUserId)! : currentUser,
           reactions: [],
-          is_ai: isAI
+          is_ai: isAI,
+          recallScore
         };
 
         dm.messages = [...dm.messages, tempMessage].sort(

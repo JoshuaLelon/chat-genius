@@ -7,7 +7,7 @@ import { CharacterTextSplitter } from "langchain/text_splitter";
 
 dotenv.config();
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY!;
 
@@ -23,13 +23,17 @@ export const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY, {
   },
 });
 
-async function chunkIfNecessary(messages: string[], userId: string, chunkSize = 1000, chunkOverlap = 100): Promise<Document[]> {
-  const needsSplitting = messages.some(msg => msg.length > chunkSize);
+async function chunkIfNecessary(messages: { id: string; content: string }[], userId: string, chunkSize = 1000, chunkOverlap = 100): Promise<Document[]> {
+  const needsSplitting = messages.some(msg => msg.content.length > chunkSize);
   
   if (!needsSplitting) {
     return messages.map(msg => ({ 
-      pageContent: msg, 
-      metadata: { user_id: userId }
+      pageContent: msg.content, 
+      metadata: { 
+        user_id: userId,
+        message_id: msg.id,
+        created_at: new Date().toISOString()
+      }
     }));
   }
 
@@ -39,8 +43,12 @@ async function chunkIfNecessary(messages: string[], userId: string, chunkSize = 
   });
   
   return await splitter.createDocuments(
-    messages,
-    messages.map(() => ({ user_id: userId }))
+    messages.map(m => m.content),
+    messages.map(m => ({ 
+      user_id: userId,
+      message_id: m.id,
+      created_at: new Date().toISOString()
+    }))
   );
 }
 
@@ -58,7 +66,7 @@ async function ensureVectorizedMessagesTable(): Promise<void> {
   }
 }
 
-export async function updateVectorStore(messages: string[], userId: string): Promise<void> {
+export async function updateVectorStore(messages: { id: string; content: string }[], userId: string): Promise<void> {
   await ensureVectorizedMessagesTable();
   const docs = await chunkIfNecessary(messages, userId);
   const embeddings = new OpenAIEmbeddings({ openAIApiKey: OPENAI_API_KEY });

@@ -17,7 +17,9 @@ import { supabase } from "@/lib/supabase"
 const EMOJI_LIST = ['👍', '❤️', '😂', '🎉', '🤔', '😢', '🔥', '👏', '✨', '🙌']
 
 interface MessageBubbleProps {
-  message: Message
+  message: Message & {
+    recallScore?: number
+  }
   currentUser: User
 }
 
@@ -89,7 +91,7 @@ export function MessageBubble({ message, currentUser }: MessageBubbleProps) {
   const handleReaction = async (emoji: string) => {
     // Improved temporary message handling
     if (message.id.startsWith('temp-')) {
-      toast.warning('Cannot react to messages that are still sending');
+      toast.error('Cannot react to messages that are still sending');
       return;
     }
 
@@ -136,6 +138,11 @@ export function MessageBubble({ message, currentUser }: MessageBubbleProps) {
     }
   };
 
+  // Format recall score as percentage
+  const recallScoreFormatted = message.recallScore !== undefined 
+    ? `${Math.round(message.recallScore * 100)}%`
+    : undefined
+
   return (
     <div className="flex items-start gap-4">
       <Avatar>
@@ -146,7 +153,17 @@ export function MessageBubble({ message, currentUser }: MessageBubbleProps) {
         <div className="flex items-center gap-2">
           <span className="font-semibold">{displayName}</span>
           {message.is_ai && (
-            <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100 px-1.5 py-0.5 rounded">AI</span>
+            <>
+              <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100 px-1.5 py-0.5 rounded">AI</span>
+              {recallScoreFormatted && (
+                <span 
+                  className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded"
+                  title="Percentage of your first 5 messages included in AI's context"
+                >
+                  Recall: {recallScoreFormatted}
+                </span>
+              )}
+            </>
           )}
           <span className="text-xs text-muted-foreground">
             {formatDate(message.created_at)}
