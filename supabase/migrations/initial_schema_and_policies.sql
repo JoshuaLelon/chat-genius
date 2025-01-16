@@ -221,9 +221,9 @@ alter table public.dm_participants enable row level security;
 alter table public.reactions enable row level security;
 
 -- Profiles policies
-create policy "Allow anyone to read all profiles"
+create policy "Allow authenticated users to read all profiles"
   on public.profiles for select
-  using (true);
+  using (auth.role() = 'authenticated');
 
 create policy "Users can update their own profile"
   on public.profiles for update
@@ -374,3 +374,23 @@ add column role text check (role in ('admin', 'member')) default 'member' not nu
 grant all privileges on table public.workspaces to service_role;
 grant all privileges on table public.workspaces to anon;
 grant all privileges on table public.workspaces to authenticated;
+
+-- Grant permissions on profiles
+grant all privileges on table public.profiles to service_role;
+grant all privileges on table public.profiles to anon;
+grant all privileges on table public.profiles to authenticated;
+
+-- Create function to handle new user profiles
+create or replace function public.handle_new_user()
+returns trigger as $$
+begin
+  insert into public.profiles (id, email)
+  values (new.id, new.email);
+  return new;
+end;
+$$ language plpgsql security definer;
+
+-- Create trigger for new user profiles
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
