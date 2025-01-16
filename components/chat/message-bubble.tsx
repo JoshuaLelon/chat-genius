@@ -28,46 +28,18 @@ export function MessageBubble({ message, currentUser }: MessageBubbleProps) {
   const [isUpdating, setIsUpdating] = useState(false)
   const [originalReactions, setOriginalReactions] = useState(message.reactions)
 
-  console.log("[MessageBubble] Rendering message:", {
-    messageId: message.id,
-    content: message.content,
-    userId: message.user_id,
-    sender: message.sender,
-    timestamp: message.created_at,
-    reactionCount: message.reactions?.length || 0,
-    reactions: message.reactions
-  });
-
   // Get the sender's display name from the email (before the @)
   const displayName = message.sender?.email?.split('@')[0] || 'Unknown User'
   const initial = displayName[0].toUpperCase()
 
   // Group reactions by emoji
   const groupedReactions = useMemo(() => {
-    console.log("[MessageBubble] Processing reactions for message:", {
-      messageId: message.id,
-      reactionCount: message.reactions?.length || 0
-    });
-    
     const groups: { [key: string]: Reaction[] } = {};
     message.reactions?.forEach(reaction => {
-      console.log("[MessageBubble] Processing reaction:", {
-        emoji: reaction.emoji,
-        reactor: reaction.reactor?.email,
-        message_id: reaction.message_id
-      });
       if (!groups[reaction.emoji]) {
         groups[reaction.emoji] = [];
       }
       groups[reaction.emoji].push(reaction);
-    });
-    
-    console.log("[MessageBubble] Grouped reactions:", {
-      messageId: message.id,
-      groups: Object.keys(groups).reduce((acc, emoji) => ({
-        ...acc,
-        [emoji]: groups[emoji].length
-      }), {})
     });
     
     return groups;
@@ -77,13 +49,6 @@ export function MessageBubble({ message, currentUser }: MessageBubbleProps) {
     const hasReacted = message.reactions?.some(
       r => r.emoji === emoji && r.user_id === currentUser.id
     ) ?? false;
-   
-    console.log("[MessageBubble] Checking if user reacted:", {
-      messageId: message.id,
-      emoji,
-      userId: currentUser.id,
-      hasReacted
-    });
     
     return hasReacted;
   }, [message.reactions, currentUser.id, message.id]);

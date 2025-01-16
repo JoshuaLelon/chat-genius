@@ -79,10 +79,24 @@ export default function ChatLayout({
           }
 
           if (workspaces && workspaces.length > 0) {
-            console.log("[ChatLayout] Found workspaces, getting first workspace data...");
-            // Get the first workspace's full data
-            const workspaceData = await getWorkspace(workspaces[0].id);
-            console.log("[ChatLayout] First workspace data:", workspaceData);
+            console.log("[ChatLayout] Found workspaces, determining initial workspace...");
+            
+            // Extract workspace ID from URL if present
+            const workspaceMatch = pathname.match(/\/chat\/workspace\/(\d{8}-\d{4}-\d{4}-\d{4}-\d{12})/);
+            
+            let targetWorkspaceId = workspaces[0].id;
+            
+            // If we have a workspace ID in the URL, use that
+            if (workspaceMatch) {
+              const urlWorkspaceId = workspaceMatch[1];
+              if (workspaces.some(w => w.id === urlWorkspaceId)) {
+                targetWorkspaceId = urlWorkspaceId;
+              }
+            }
+            
+            // Get the workspace's full data
+            const workspaceData = await getWorkspace(targetWorkspaceId);
+            console.log("[ChatLayout] Initial workspace data:", workspaceData);
             setActiveWorkspace(workspaceData);
             
             // Only redirect to first channel if we're at the root chat path
@@ -90,7 +104,7 @@ export default function ChatLayout({
               const firstChannelId = workspaceData.channels[0].id;
               console.log("[ChatLayout] Setting first channel as active:", firstChannelId);
               setActiveChannelId(firstChannelId);
-              router.push(`/chat/channel/${firstChannelId}`);
+              router.push(`/chat/workspace/${targetWorkspaceId}/channel/${firstChannelId}`);
             }
           }
         } catch (error) {
@@ -110,7 +124,7 @@ export default function ChatLayout({
 
   useEffect(() => {
     console.log("[ChatLayout] Pathname changed:", pathname);
-    const channelMatch = pathname.match(/\/chat\/channel\/(.+)/)
+    const channelMatch = pathname.match(/\/chat\/(?:workspace\/[^/]+\/)?channel\/(.+)/)
     const userMatch = pathname.match(/\/chat\/dm\/(.+)/)
     
     if (channelMatch) {
@@ -143,46 +157,28 @@ export default function ChatLayout({
         currentUserId: activeUserId,
         pathname
       })
-      
+
+      // Clear active states first
+      setActiveChannelId(undefined)
+      setActiveUserId(undefined)
+      setActiveWorkspace(null) // Clear current workspace before fetching new one
+
       // Fetch new workspace data
       const workspaceData = await getWorkspace(workspaceId)
-      
-      // Check if we need to redirect before updating workspace state
-      let redirectPath: string | null = null;
-      
-      if (pathname === '/chat') {
-        // At root path, go to first channel
-        const firstChannelId = workspaceData.channels[0]?.id
-        if (firstChannelId) {
-          redirectPath = `/chat/channel/${firstChannelId}`
-        }
-      } else if (pathname.startsWith('/chat/channel/')) {
-        // In a channel - check if it exists in new workspace
-        const channelExists = workspaceData.channels.some(c => c.id === activeChannelId)
-        if (!channelExists) {
-          const firstChannelId = workspaceData.channels[0]?.id
-          if (firstChannelId) {
-            redirectPath = `/chat/channel/${firstChannelId}`
-          }
-        }
-      } else if (pathname.startsWith('/chat/dm/')) {
-        // In a DM - check if user exists in new workspace
-        const userExists = workspaceData.users.some(u => u.id === activeUserId)
-        if (!userExists) {
-          const firstChannelId = workspaceData.channels[0]?.id
-          if (firstChannelId) {
-            redirectPath = `/chat/channel/${firstChannelId}`
-          }
-        }
-      }
       
       // Update workspace state
       setActiveWorkspace(workspaceData)
       
-      // Only redirect if needed
-      if (redirectPath) {
-        router.push(redirectPath)
+      // Navigate to first channel in new workspace
+      const firstChannelId = workspaceData.channels[0]?.id
+      if (!firstChannelId) {
+        console.log("[ChatLayout] No channels in workspace")
+        return
       }
+      
+      // Navigate using new URL structure
+      console.log("[ChatLayout] Navigating to first channel:", firstChannelId)
+      router.push(`/chat/workspace/${workspaceId}/channel/${firstChannelId}`)
     } catch (error) {
       console.error('[ChatLayout] Error switching workspace:', error)
     }

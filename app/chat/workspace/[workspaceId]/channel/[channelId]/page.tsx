@@ -6,28 +6,45 @@ import { useEffect, useState } from "react"
 import { Channel } from "@/types"
 import { useRouter } from "next/navigation"
 
-export default function ChannelPage({ params }: { params: { channelId: string } }) {
+export default function WorkspaceChannelPage({ 
+  params 
+}: { 
+  params: { 
+    workspaceId: string
+    channelId: string 
+  } 
+}) {
   const { workspace } = useChatContext()
   const [channel, setChannel] = useState<Channel | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
-    console.log('[ChannelPage] useEffect triggered:', {
+    console.log('[WorkspaceChannelPage] useEffect triggered:', {
+      workspaceId: params.workspaceId,
       channelId: params.channelId,
-      workspaceId: workspace.id,
+      currentWorkspaceId: workspace.id,
       workspaceName: workspace.name,
       currentChannels: workspace.channels.map(c => ({ id: c.id, name: c.name })),
-      activeChannelId: params.channelId
     });
 
     setIsLoading(true)
+
+    // Verify we're in the correct workspace
+    if (workspace.id !== params.workspaceId) {
+      console.log('[WorkspaceChannelPage] Wrong workspace, redirecting:', {
+        currentWorkspaceId: workspace.id,
+        requestedWorkspaceId: params.workspaceId
+      });
+      router.push(`/chat/workspace/${workspace.id}/channel/${workspace.channels[0].id}`);
+      return;
+    }
 
     // Find the channel in the current workspace
     const foundChannel = workspace.channels.find(c => c.id === params.channelId)
     
     if (foundChannel) {
-      console.log('[ChannelPage] Found channel in workspace:', {
+      console.log('[WorkspaceChannelPage] Found channel in workspace:', {
         channelId: foundChannel.id,
         channelName: foundChannel.name,
         workspaceId: workspace.id,
@@ -35,7 +52,7 @@ export default function ChannelPage({ params }: { params: { channelId: string } 
       })
       setChannel(foundChannel)
     } else {
-      console.log('[ChannelPage] Channel not found in workspace:', {
+      console.log('[WorkspaceChannelPage] Channel not found in workspace:', {
         searchedChannelId: params.channelId,
         availableChannels: workspace.channels.map(c => ({ id: c.id, name: c.name })),
         workspaceId: workspace.id,
@@ -44,7 +61,7 @@ export default function ChannelPage({ params }: { params: { channelId: string } 
       // Redirect to first channel in workspace
       const firstChannel = workspace.channels[0]
       if (firstChannel) {
-        router.push(`/chat/channel/${firstChannel.id}`)
+        router.push(`/chat/workspace/${workspace.id}/channel/${firstChannel.id}`)
       } else {
         router.push('/chat')
       }
@@ -52,7 +69,7 @@ export default function ChannelPage({ params }: { params: { channelId: string } 
     }
 
     setIsLoading(false)
-  }, [workspace, params.channelId])
+  }, [workspace, params.workspaceId, params.channelId])
 
   if (isLoading) {
     return (
@@ -78,5 +95,4 @@ export default function ChannelPage({ params }: { params: { channelId: string } 
       <ChatArea channelId={params.channelId} />
     </div>
   )
-}
-
+} 
