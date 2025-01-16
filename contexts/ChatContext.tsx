@@ -1,7 +1,7 @@
 "use client"
 
 import { Channel, DirectMessage, Message, Reaction, User, Workspace } from "@/types"
-import { createContext, useContext, useState, useEffect } from "react"
+import { createContext, useContext, useState, useEffect, useRef } from "react"
 import { supabase, getWorkspace, createMessage, updateUserStatus, getUser, subscribeToWorkspace } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
 
@@ -44,6 +44,7 @@ export function ChatProvider({ children, initialWorkspace, currentUser }: { chil
 
   const [workspace, setWorkspace] = useState<Workspace>(sortedWorkspace)
   const router = useRouter()
+  const tempMessageCounter = useRef(0);
 
   console.log("[ChatProvider] Initializing with:", {
     workspaceId: initialWorkspace.id,
@@ -97,7 +98,6 @@ export function ChatProvider({ children, initialWorkspace, currentUser }: { chil
         reactionCount: dm.messages.reduce((acc, m) => acc + (m.reactions?.length || 0), 0)
       }))
     });
-    setWorkspace(workspace)
   }, [workspace])
 
   useEffect(() => {
@@ -116,7 +116,10 @@ export function ChatProvider({ children, initialWorkspace, currentUser }: { chil
             messageId: message?.id,
             messageContent: message?.content,
             channelId: message?.channel_id,
-            dmId: message?.dm_id
+            dmId: message?.dm_id,
+            existingMessages: updated.directMessages
+              .find(dm => dm.id === message?.dm_id)
+              ?.messages.map(m => ({ id: m.id, content: m.content }))
           });
           
           // Update channels
@@ -176,11 +179,17 @@ export function ChatProvider({ children, initialWorkspace, currentUser }: { chil
                 );
                 
                 if (tempMessage) {
+                  console.log("[ChatContext] Found temp message to replace:", {
+                    tempId: tempMessage.id,
+                    realId: message.id,
+                    content: message.content
+                  });
                   // Replace temp message with real one
                   dm.messages = dm.messages.map(m =>
                     m.id === tempMessage.id ? message : m
                   );
                 } else {
+                  console.log("[ChatContext] No temp message found, adding new message");
                   // If no temp message found, add the new one
                   dm.messages = [...dm.messages, message];
                 }
@@ -188,6 +197,11 @@ export function ChatProvider({ children, initialWorkspace, currentUser }: { chil
                 // Sort messages by timestamp
                 dm.messages = dm.messages
                   .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+                
+                // Remove any duplicate messages
+                dm.messages = dm.messages.filter((message, index, self) =>
+                  index === self.findIndex((m) => m.id === message.id)
+                );
                 
                 console.log("[ChatContext] Updated DM messages:", {
                   dmId: dm.id,
@@ -208,54 +222,6 @@ export function ChatProvider({ children, initialWorkspace, currentUser }: { chil
             }
             return dm;
           });
-        }
-        
-        if (type === 'reactions') {
-          const { new: reaction, old: oldReaction, eventType } = payload;
-          console.log("[ChatContext] Processing reaction change:", {
-            eventType,
-            reaction,
-            oldReaction
-          });
-          
-          // Update message reactions in both channels and DMs
-          const updateMessages = (messages: Message[]) => 
-            messages.map(message => {
-              if (message.id === reaction?.message_id) {
-                console.log("[ChatContext] Found message for reaction:", {
-                  messageId: message.id,
-                  currentReactions: message.reactions
-                });
-                
-                if (eventType === 'INSERT') {
-                  console.log("[ChatContext] Adding new reaction");
-                  message.reactions = [...(message.reactions || []), reaction];
-                } else if (eventType === 'DELETE' && oldReaction) {
-                  console.log("[ChatContext] Removing reaction:", {
-                    oldReaction,
-                    beforeCount: message.reactions?.length
-                  });
-                  message.reactions = message.reactions?.filter(r => r.id !== oldReaction.id);
-                  console.log("[ChatContext] After removing reaction:", {
-                    afterCount: message.reactions?.length,
-                    remainingReactions: message.reactions
-                  });
-                }
-                
-                console.log("[ChatContext] Updated message reactions:", message.reactions);
-              }
-              return message;
-            });
-            
-          updated.channels = updated.channels.map(channel => ({
-            ...channel,
-            messages: updateMessages(channel.messages)
-          }));
-          
-          updated.directMessages = updated.directMessages.map(dm => ({
-            ...dm,
-            messages: updateMessages(dm.messages)
-          }));
         }
         
         return updated;
@@ -283,8 +249,11 @@ export function ChatProvider({ children, initialWorkspace, currentUser }: { chil
 
     try {
       // Create optimistic message
+      const newCounter = tempMessageCounter.current + 1;
+      tempMessageCounter.current = newCounter;
+      
       const optimisticMessage = {
-        id: `temp-${Date.now()}`,
+        id: `temp-${Date.now()}-${newCounter}`,
         content: content.trim(),
         user_id: currentUser.id,
         created_at: new Date().toISOString(),
@@ -375,7 +344,13 @@ export function ChatProvider({ children, initialWorkspace, currentUser }: { chil
   };
 
   const addTemporaryMessage = (dmUserId: string, content: string, isAI: boolean = false, recallScore?: number) => {
-    console.log("[ChatContext] Adding temporary message:", { dmUserId, content, isAI, recallScore });
+    console.log("[ChatContext] Adding temporary message:", { 
+      dmUserId, 
+      content, 
+      isAI, 
+      recallScore,
+      currentCounter: tempMessageCounter.current 
+    });
     
     setWorkspace(current => {
       const updated = structuredClone(current);
@@ -385,11 +360,20 @@ export function ChatProvider({ children, initialWorkspace, currentUser }: { chil
       );
 
       if (dm) {
+        // Increment counter first
+        const newCounter = tempMessageCounter.current + 1;
+        tempMessageCounter.current = newCounter;
+        
+        console.log("[ChatContext] Creating temp message with ID:", {
+          timestamp: Date.now(),
+          counter: newCounter,
+          fullId: `temp-${Date.now()}-${newCounter}`
+        });
+
         const tempMessage: Message = {
-          id: `temp-${Date.now()}`,
+          id: `temp-${Date.now()}-${newCounter}`,
           content,
           created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
           user_id: isAI ? dmUserId : currentUser.id,
           sender: isAI ? dm.participants.find(p => p.id === dmUserId)! : currentUser,
           reactions: [],
@@ -397,9 +381,30 @@ export function ChatProvider({ children, initialWorkspace, currentUser }: { chil
           recallScore
         };
 
+        console.log("[ChatContext] Current messages before adding:", {
+          count: dm.messages.length,
+          messages: dm.messages.map(m => ({
+            id: m.id,
+            content: m.content.substring(0, 50) + "..."
+          }))
+        });
+
         dm.messages = [...dm.messages, tempMessage].sort(
           (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         );
+
+        // Remove any duplicate messages
+        dm.messages = dm.messages.filter((message, index, self) =>
+          index === self.findIndex((m) => m.id === message.id)
+        );
+
+        console.log("[ChatContext] Messages after adding:", {
+          count: dm.messages.length,
+          messages: dm.messages.map(m => ({
+            id: m.id,
+            content: m.content.substring(0, 50) + "..."
+          }))
+        });
       }
 
       return updated;

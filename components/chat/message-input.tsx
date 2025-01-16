@@ -30,17 +30,19 @@ export function MessageInput({ onSendMessage, dmUserId }: MessageInputProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!content.trim() || isLoading) {
+    if (!content.trim() || isLoading || isGeneratingAI) {
       console.log("[MessageInput] Ignoring submit:", {
         content: content.trim(),
-        isLoading
+        isLoading,
+        isGeneratingAI
       });
       return
     }
 
     console.log("[MessageInput] Submitting message:", {
       content,
-      isLoading
+      isLoading,
+      isGeneratingAI
     });
 
     try {
@@ -78,7 +80,7 @@ export function MessageInput({ onSendMessage, dmUserId }: MessageInputProps) {
         userId: dmUserId,
         question: content
       });
-
+      
       const response = await fetch("/api/ai-respond", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -102,10 +104,10 @@ export function MessageInput({ onSendMessage, dmUserId }: MessageInputProps) {
         recallScore: data.recallScore
       });
       
-      console.log("[MessageInput] Sending original user message");
+      // Send the user's message first
       await onSendMessage(content);
       
-      console.log("[MessageInput] Adding AI response as temporary message");
+      // Then add AI response as temporary message
       addTemporaryMessage(dmUserId, data.answer, true, data.recallScore);
       
       setContent("");
@@ -128,8 +130,11 @@ export function MessageInput({ onSendMessage, dmUserId }: MessageInputProps) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       console.log("[MessageInput] Enter key pressed (no shift)");
-      e.preventDefault()
-      handleSubmit(e)
+      e.preventDefault();
+      // Only submit if we're not in AI Response mode
+      if (!isGeneratingAI) {
+        handleSubmit(e);
+      }
     }
   }
 
