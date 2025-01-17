@@ -89,6 +89,35 @@ begin
 end;
 $$;
 
+-- Add new function for workspace summaries similarity search
+create or replace function match_workspace_summaries(
+  query_embedding vector(1536),
+  match_count int DEFAULT 5,
+  similarity_threshold float DEFAULT 0.5
+) returns table (
+  id uuid,
+  workspace_id uuid,
+  summary text,
+  metadata jsonb,
+  similarity float
+)
+language plpgsql
+as $$
+begin
+  return query
+  select
+    vectorized_workspace_summaries.id,
+    vectorized_workspace_summaries.workspace_id,
+    vectorized_workspace_summaries.summary,
+    vectorized_workspace_summaries.metadata,
+    1 - (vectorized_workspace_summaries.embedding <=> query_embedding) as similarity
+  from vectorized_workspace_summaries
+  where 1 - (vectorized_workspace_summaries.embedding <=> query_embedding) >= similarity_threshold
+  order by vectorized_workspace_summaries.embedding <=> query_embedding
+  limit match_count;
+end;
+$$;
+
 -- Enable RLS on vectorized_messages
 alter table public.vectorized_messages enable row level security;
 
